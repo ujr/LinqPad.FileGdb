@@ -1,0 +1,16 @@
+# Build output
+/**/obj/
+/**/bin/
+
+# VS settings
+/.vs/
+/.vscode/
+
+# NuGet packages
+*.nupkg
+*.snupkg
+
+# File GDB lock files
+*.sr.lock
+# Word temp files
+~$*.docx
