@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.IO;
 using System.Reflection;
 using LINQPad.Extensibility.DataContext;
@@ -76,7 +76,7 @@ public class FileGdbDriver : StaticDataContextDriver
 			ToolTipText = "Right-click me! Drag me to code editor!",
 			DragText = nameof(FileGdbContext.FooBar) // text will be added to code editor!
 		};
-		
+
 		return new List<ExplorerItem>
 		{
 			catalog, dbTune, sample
