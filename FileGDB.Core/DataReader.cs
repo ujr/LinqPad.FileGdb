@@ -87,7 +87,12 @@ internal class DataReader : IDisposable
 		return _reader.ReadUInt32();
 	}
 
-	public double ReadFloat64()
+	public float ReadSingle()
+	{
+		return _reader.ReadSingle();
+	}
+
+	public double ReadDouble()
 	{
 		return _reader.ReadDouble();
 	}

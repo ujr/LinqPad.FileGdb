@@ -1,20 +1,23 @@
 using System.Collections;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Text;
 
 namespace FileGDB.Core;
 
 // Flat list of tables (.gdbtable files)
 // First such table contains catalog (list of tables)
 
-
-public class FileGDB : IDisposable
+public sealed class FileGDB : IDisposable
 {
+	private readonly object _syncLock = new();
 	private readonly IList<Table> _openTables;
+	private IList<CatalogEntry>? _catalog;
 
 	private FileGDB(string gdbFolderPath)
 	{
 		FolderPath = gdbFolderPath ?? throw new ArgumentNullException(nameof(gdbFolderPath));
+
 		_openTables = new List<Table>();
 	}
 
@@ -25,24 +28,147 @@ public class FileGDB : IDisposable
 		if (gdbFolderPath is null)
 			throw new ArgumentNullException(nameof(gdbFolderPath));
 
-		return new FileGDB(gdbFolderPath);
+		var gdb = new FileGDB(gdbFolderPath);
+		gdb.LoadCatalog();
+		return gdb;
 	}
 
 	public void Dispose()
 	{
-		foreach (var table in _openTables)
+		Table[] copy;
+
+		lock (_syncLock)
+		{
+			copy = _openTables.ToArray();
+			_openTables.Clear();
+		}
+
+		foreach (var table in copy)
 		{
 			table.Dispose();
 		}
-
-		_openTables.Clear();
 	}
 
-	public Table OpenTable(string baseName) // "aXXXXXXXX"
+	public IEnumerable<string> TableNames
 	{
+		get
+		{
+			IList<CatalogEntry>? catalog;
+
+			lock (_syncLock)
+			{
+				catalog = _catalog;
+			}
+
+			return catalog?.Select(e => e.Name) ?? Enumerable.Empty<string>();
+		}
+	}
+
+	public Table OpenTable(int tableID)
+	{
+		var baseName = GetTableBaseName(tableID);
 		var table = Table.Open(baseName, FolderPath);
-		_openTables.Add(table);
+
+		lock (_syncLock)
+		{
+			_openTables.Add(table);
+		}
+
 		return table;
+	}
+
+	public Table OpenTable(string tableName)
+	{
+		var entry = GetCatalogEntry(tableName);
+		if (entry.Missing)
+			throw Error($"No such table: {tableName}");
+		return OpenTable(entry.ID);
+	}
+
+	private void LoadCatalog()
+	{
+		var list = new List<CatalogEntry>();
+
+		var baseName = GetTableBaseName(1); // "a00000001"
+
+		using (var table = Table.Open(baseName, FolderPath))
+		{
+			for (int oid = 1; oid <= table.MaxObjectID; oid++)
+			{
+				var row = table.ReadRow(oid);
+				if (row is null) continue;
+				var name = Convert.ToString(row[1]);
+				if (name is null)
+					throw Error("Catalog contains NULL name");
+				var format = Convert.ToInt32(row[2] ?? 0);
+				list.Add(new CatalogEntry(oid, name, format));
+			}
+		}
+
+		SetCatalog(list);
+	}
+
+	private CatalogEntry GetCatalogEntry(string tableName)
+	{
+		var catalog = GetCatalog();
+
+		var entry = catalog.FirstOrDefault(entry => entry.Name == tableName);
+
+		if (entry.Missing)
+		{
+			const StringComparison ignoreCase = StringComparison.OrdinalIgnoreCase;
+			entry = catalog.FirstOrDefault(e => string.Equals(e.Name, tableName, ignoreCase));
+		}
+
+		return entry;
+	}
+
+	private IList<CatalogEntry> GetCatalog()
+	{
+		lock (_syncLock)
+		{
+			return _catalog ??= new List<CatalogEntry>();
+		}
+	}
+
+	private void SetCatalog(IList<CatalogEntry> list)
+	{
+		lock (_syncLock)
+		{
+			_catalog?.Clear();
+			_catalog = list;
+		}
+	}
+
+	private static string GetTableBaseName(int tableID)
+	{
+		return string.Format("a{0:x8}", tableID);
+	}
+
+	private static Exception Error(string message)
+	{
+		return new IOException(message ?? "File GDB error"); // TODO Custom exception
+	}
+
+	private readonly struct CatalogEntry
+	{
+		public int ID { get; }
+		public string Name { get; }
+		public int Format { get; }
+
+		public CatalogEntry(int id, string name, int format = 0)
+		{
+			ID = id;
+			Name = name ?? throw new ArgumentNullException(nameof(name));
+			Format = format;
+		}
+
+		public bool Missing => ID <= 0 || Name == null;
+
+		public override string ToString()
+		{
+			return $"ID={ID} Name={Name}";
+		}
 	}
 }
 
@@ -68,6 +194,18 @@ public sealed class Table : IDisposable
 
 	public string BaseName { get; } // "aXXXXXXXX"
 	public string FolderPath { get; } // "Path\To\MyFile.gdb"
+
+	public int RowCount { get; private set; }
+	public int FieldCount { get; private set; }
+	public int Version { get; private set; }
+	public GeometryType GeometryType { get; private set; }
+	public bool HasZ { get; private set; }
+	public bool HasM { get; private set; }
+	public bool UseUtf8 { get; private set; }
+	public IReadOnlyList<Field> Fields { get; private set; }
+	public int MaxEntrySize { get; private set; }
+	public int MaxObjectID { get; private set; } // TODO unsure (experiment with deleting rows)
+	public IReadOnlyList<object> Indexes => throw new NotImplementedException();
 
 	private Table(string baseName, string folderPath)
 	{
@@ -175,7 +313,7 @@ public sealed class Table : IDisposable
 		return buffer;
 	}
 
-	public object[]? ReadRow(int fid)
+	public object?[]? ReadRow(int fid)
 	{
 		if (_dataReader is null)
 			throw new ObjectDisposedException(GetType().Name);
@@ -185,14 +323,86 @@ public sealed class Table : IDisposable
 
 		_dataReader.Seek(offset);
 
+		var startPosition = _dataReader.Position;
+		var rowBlobSize = _dataReader.ReadUInt32();
+		var nullFlags = ReadNullFlags(_dataReader, Fields);
 
-		throw new NotImplementedException();
+		var fieldCount = Fields.Count;
+		var values = new object?[fieldCount];
+
+		for (int i = 0, j = 0; i < fieldCount; i++)
+		{
+			var field = Fields[i];
+
+			if (field.Nullable && nullFlags[j++])
+			{
+				values[i] = null;
+				continue;
+			}
+
+			switch (field.Type)
+			{
+				case FieldType.Int16:
+					values[i] = _dataReader.ReadInt16();
+					break;
+				case FieldType.Int32:
+					values[i] = _dataReader.ReadInt32();
+					break;
+				case FieldType.Single:
+					values[i] = _dataReader.ReadSingle();
+					break;
+				case FieldType.Double:
+					values[i] = _dataReader.ReadDouble();
+					break;
+				case FieldType.String:
+				case FieldType.XML:
+					values[i] = ReadTextField(_dataReader, UseUtf8);
+					break;
+				case FieldType.DateTime:
+					values[i] = ReadDateTimeField(_dataReader);
+					break;
+				case FieldType.ObjectID:
+					values[i] = fid;
+					break;
+				case FieldType.Geometry:
+					values[i] = ReadGeometryBlob(_dataReader);
+					break;
+				case FieldType.Blob:
+					values[i] = ReadBlobField(_dataReader);
+					break;
+				case FieldType.Raster:
+					// depends on RasterType in field definition
+					throw new NotImplementedException();
+					break;
+				case FieldType.GUID:
+				case FieldType.GlobalID:
+					values[i] = ReadGuidField(_dataReader);
+					break;
+				case FieldType.Int64:
+					values[i] = _dataReader.ReadInt64();
+					break;
+				case FieldType.DateOnly:
+				case FieldType.TimeOnly:
+				case FieldType.DateTimeOffset:
+					throw new NotImplementedException($"Field of type {field.Type} not yet implemented");
+				default:
+					throw new ArgumentOutOfRangeException();
+			}
+		}
+
+		var currentPosition = _dataReader.Position;
+		Debug.Assert(currentPosition == startPosition + 4 + rowBlobSize);
+
+		return values;
 	}
 
 	private long GetRowOffset(int fid)
 	{
 		if (_indexReader is null)
 			throw new ObjectDisposedException(GetType().Name);
+
+		fid -= 1; // from external 1-based to internal 0-based
+		if (fid < 0) return -1;
 
 		/*
 		   if pabyTablXBlockMap:
@@ -271,6 +481,72 @@ public sealed class Table : IDisposable
 		return rowBlobSize;
 	}
 
+	private static BitArray ReadNullFlags(DataReader dataReader, IReadOnlyList<Field> fields)
+	{
+		// assume reader positioned at row's null flags
+		// if all fields are non-nullable, there are no null flags stored
+
+		int count = fields.Count;
+
+		var bytes = new List<byte>((count + 7) / 8);
+		int nullable = fields.Count(f => f.Nullable);
+		while (nullable > 0)
+		{
+			bytes.Add(dataReader.ReadByte());
+			nullable -= 8;
+		}
+
+		return new BitArray(bytes.ToArray());
+	}
+
+	private static byte[] ReadGeometryBlob(DataReader reader)
+	{
+		// assume reader positioned at start of field data
+		var size = reader.ReadVarUInt();
+		if (size > int.MaxValue)
+			throw Error("Geometry field too large for this API");
+		var bytes = reader.ReadBytes((int)size);
+		return bytes;
+	}
+
+	private static byte[] ReadBlobField(DataReader reader)
+	{
+		// assume reader positioned at start of field data
+		var size = reader.ReadVarUInt();
+		if (size > int.MaxValue)
+			throw Error("Blob field too large for this API");
+		var bytes = reader.ReadBytes((int)size);
+		return bytes;
+	}
+
+	private static string ReadTextField(DataReader reader, bool isUtf8)
+	{
+		// assume reader positioned at start of field data
+		var size = reader.ReadVarUInt();
+		if (size > int.MaxValue)
+			throw Error("String field too large for this API");
+		var bytes = reader.ReadBytes((int)size);
+		var text = isUtf8
+			? Encoding.UTF8.GetString(bytes)
+			: throw new NotImplementedException(); // what's the encoding?
+		return text;
+	}
+
+	private static Guid ReadGuidField(DataReader reader)
+	{
+		var bytes = reader.ReadBytes(16);
+		// TODO Test if bytes from FGDB are in the order expected by Guid()
+		// FGDB: b3 b2 b1 b0   b5 b4   b7 b6   b8 b9 b10 b11 b12 b13 b14 b15 b16
+		return new Guid(bytes);
+	}
+
+	private static DateTime ReadDateTimeField(DataReader reader)
+	{
+		double days = reader.ReadDouble();
+		var epoch = new DateTime(1899, 12, 30, 0, 0, 0); // 1899-12-30 00:00:00
+		return epoch.AddDays(days);
+	}
+
 	private void ReadIndexHeader(DataReader indexReader)
 	{
 		// - Header (16 bytes)
@@ -288,6 +564,8 @@ public sealed class Table : IDisposable
 		var n1024Blocks = indexReader.ReadInt32(); // TODO rename num1KBlocks
 		var nfeaturesx = indexReader.ReadInt32(); // including deleted rows! TODO rename numRows
 		_offsetSize = indexReader.ReadInt32(); // 4, 5, or 6 (bytes per offset) TODO rename offsetSize
+
+		MaxObjectID = nfeaturesx;
 
 		if (n1024Blocks == 0)
 			Debug.Assert(nfeaturesx == 0);
@@ -361,16 +639,6 @@ public sealed class Table : IDisposable
 		 */
 	}
 
-	public int RowCount { get; private set; }
-	public int FieldCount { get; private set; }
-	public int Version { get; private set; }
-	public GeometryType GeometryType { get; private set; }
-	public bool HasZ { get; private set; }
-	public bool HasM { get; private set; }
-	public bool UseUtf8 { get; private set; }
-	public IReadOnlyList<Field> Fields { get; private set; }
-	public int MaxEntrySize { get; private set; }
-
 	private void ReadDataHeader(DataReader reader)
 	{
 		// assume reader is positioned at start of header
@@ -386,7 +654,7 @@ public sealed class Table : IDisposable
 		// Fixed part of fields section:
 		var headerBytes = reader.ReadInt32(); // excluding this field
 		var version = reader.ReadInt32(); // 3 for FGDB at 9.x, 4 for FGDB at 10.x
-		var flags = reader.ReadUInt32(); // see FGDB Spec
+		var flags = reader.ReadUInt32(); // see decoding below
 		FieldCount = reader.ReadInt16(); // including the implicit OBJECTID field!
 
 		// Decode known flag bits:
@@ -412,15 +680,9 @@ public sealed class Table : IDisposable
 			fields.Add(field); // here we also add the OID field
 		}
 
-		Fields = new ReadOnlyCollection<Field>(fields);
+		Debug.Assert(FieldCount == fields.Count);
 
-		/*
-		   if fd.nullable:
-		       has_flags = True
-		       nullable_fields = nullable_fields + 1
-		 */
-		int nullable_fields = fields.Count(f => f.Nullable);
-		bool has_flags = nullable_fields > 0;
+		Fields = new ReadOnlyCollection<Field>(fields);
 	}
 
 	private static Field ReadField(
@@ -450,46 +712,46 @@ public sealed class Table : IDisposable
 				// weird, but these are different from the table-level HasZ/M flags
 				bool hasM = (geomFlags & 2) != 0; // and therefore also M scale, domain, tolerance
 				bool hasZ = (geomFlags & 4) != 0; // and therefore also Z scale, domain, tolerance
-				geomDef.XOrigin = reader.ReadFloat64();
-				geomDef.YOrigin = reader.ReadFloat64();
-				geomDef.XYScale = reader.ReadFloat64();
+				geomDef.XOrigin = reader.ReadDouble();
+				geomDef.YOrigin = reader.ReadDouble();
+				geomDef.XYScale = reader.ReadDouble();
 				if (hasM)
 				{
 					geomDef.HasM = true; // TODO unsure, better use tableHasM?
-					geomDef.MOrigin = reader.ReadFloat64();
-					geomDef.MScale = reader.ReadFloat64();
+					geomDef.MOrigin = reader.ReadDouble();
+					geomDef.MScale = reader.ReadDouble();
 				}
 				if (hasZ)
 				{
 					geomDef.HasZ = true; // TODO unsure, ditto
-					geomDef.ZOrigin = reader.ReadFloat64();
-					geomDef.ZScale = reader.ReadFloat64();
+					geomDef.ZOrigin = reader.ReadDouble();
+					geomDef.ZScale = reader.ReadDouble();
 				}
-				geomDef.XYTolerance = reader.ReadFloat64();
+				geomDef.XYTolerance = reader.ReadDouble();
 				if (hasM)
 				{
-					geomDef.MTolerance = reader.ReadFloat64();
+					geomDef.MTolerance = reader.ReadDouble();
 				}
 				if (hasZ)
 				{
-					geomDef.ZTolerance = reader.ReadFloat64();
+					geomDef.ZTolerance = reader.ReadDouble();
 				}
 
-				geomDef.Extent.XMin = reader.ReadFloat64();
-				geomDef.Extent.YMin = reader.ReadFloat64();
-				geomDef.Extent.XMax = reader.ReadFloat64();
-				geomDef.Extent.YMax = reader.ReadFloat64();
+				geomDef.Extent.XMin = reader.ReadDouble();
+				geomDef.Extent.YMin = reader.ReadDouble();
+				geomDef.Extent.XMax = reader.ReadDouble();
+				geomDef.Extent.YMax = reader.ReadDouble();
 				if (tableHasZ)
 				{
 					geomDef.Extent.HasZ = true;
-					geomDef.Extent.ZMin = reader.ReadFloat64();
-					geomDef.Extent.ZMax = reader.ReadFloat64();
+					geomDef.Extent.ZMin = reader.ReadDouble();
+					geomDef.Extent.ZMax = reader.ReadDouble();
 				}
 				if (tableHasM)
 				{
 					geomDef.Extent.HasM = true;
-					geomDef.Extent.MMin = reader.ReadFloat64();
-					geomDef.Extent.MMax = reader.ReadFloat64();
+					geomDef.Extent.MMin = reader.ReadDouble();
+					geomDef.Extent.MMax = reader.ReadDouble();
 				}
 
 				_ = reader.ReadByte(); // always zero?
@@ -497,7 +759,7 @@ public sealed class Table : IDisposable
 				geomDef.Grid.Count = reader.ReadInt32(); // 1 or 2 or 3
 				for (int i = 0; i < geomDef.Grid.Count; i++)
 				{
-					geomDef.Grid[i] = reader.ReadFloat64();
+					geomDef.Grid[i] = reader.ReadDouble();
 				}
 
 				field.GeometryDef = geomDef;
@@ -528,6 +790,7 @@ public sealed class Table : IDisposable
 			case FieldType.GlobalID:
 				// The size is 38, suggesting that the GUID is stored like
 				// "{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}" (aka registry format)
+				// but indeed it's stored as 16 bytes
 				size = reader.ReadByte();
 				flag = reader.ReadByte();
 				field.Nullable = (flag & 1) != 0;
@@ -618,6 +881,11 @@ public sealed class Table : IDisposable
 		}
 
 		return field;
+	}
+
+	private static Exception Error(string message)
+	{
+		return new IOException(message);
 	}
 }
 
