@@ -14,3 +14,6 @@
 *.sr.lock
 # Word temp files
 ~$*.docx
+
+# User's own R# settings
+*.DotSettings.user

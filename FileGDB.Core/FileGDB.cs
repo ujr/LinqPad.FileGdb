@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Text;
@@ -175,15 +176,10 @@ public sealed class FileGDB : IDisposable
 /// <summary>
 /// Represents a single FGDB table. Each FGDB table has at least two files:
 /// - aXXXXXXXX.gdbtable - the data file (field descriptions and row data)
-/// - aXXXXXXXX.gdbtable - the index file (row offsets)
-/// The .gdbtable file structure is:
-/// - Header (40 bytes)
-/// - Field descriptions (fixed part, per-field part)
-/// - Row data
-/// The .gdbtablx file structure is:
-/// - Header (16 bytes)
-/// - Offset section
-/// - Trailing section
+/// - aXXXXXXXX.gdbtablx - the index file (row offsets)
+/// and may have additional files for spatial and/or attribute indexes:
+/// - aXXXXXXXX.NAME.atx - attribute index
+/// - aXXXXXXXX.NAME.spx - spatial index
 /// </summary>
 public sealed class Table : IDisposable
 {
@@ -191,6 +187,7 @@ public sealed class Table : IDisposable
 	private DataReader? _indexReader;
 	private int _offsetSize;
 	private BitArray? _blockMap; // pabyTablXBlockMap chez Even Rouault
+	private IReadOnlyList<IndexInfo>? _indexes;
 
 	public string BaseName { get; } // "aXXXXXXXX"
 	public string FolderPath { get; } // "Path\To\MyFile.gdb"
@@ -202,10 +199,10 @@ public sealed class Table : IDisposable
 	public bool HasZ { get; private set; }
 	public bool HasM { get; private set; }
 	public bool UseUtf8 { get; private set; }
-	public IReadOnlyList<Field> Fields { get; private set; }
+	public IReadOnlyList<FieldInfo> Fields { get; private set; }
 	public int MaxEntrySize { get; private set; }
 	public int MaxObjectID { get; private set; } // TODO unsure (experiment with deleting rows)
-	public IReadOnlyList<object> Indexes => throw new NotImplementedException();
+	public IReadOnlyList<IndexInfo> Indexes => _indexes ??= LoadIndexes();
 
 	private Table(string baseName, string folderPath)
 	{
@@ -217,7 +214,7 @@ public sealed class Table : IDisposable
 		FolderPath = folderPath ?? throw new ArgumentNullException(nameof(folderPath));
 		BaseName = baseName;
 
-		Fields = new ReadOnlyCollection<Field>(Array.Empty<Field>());
+		Fields = new ReadOnlyCollection<FieldInfo>(Array.Empty<FieldInfo>());
 	}
 
 	public static Table Open(string baseName, string folderPath)
@@ -280,14 +277,34 @@ public sealed class Table : IDisposable
 		}
 	}
 
+	public RowsResult Search(string? fields, string? whereClause, Envelope? extent)
+	{
+		fields = fields is null ? "*" : fields.Trim();
+		whereClause = Canonical(whereClause);
+
+		if (fields != "*")
+			throw new NotImplementedException("Sub fields not yet implemented");
+		if (whereClause != null)
+			throw new NotImplementedException("Where Clause filtering not yet implemented");
+		if (extent != null)
+			throw new NotImplementedException("Spatial extent restriction not yet implemented");
+
+		return FullTableScan(fields);
+	}
+
+	private RowsResult FullTableScan(string? fields)
+	{
+		return new TableScanResult(this);
+	}
+
 	/// <returns>Size in bytes, or -1 if no such row</returns>
-	public long GetRowSize(int fid)
+	public long GetRowSize(int oid)
 	{
 		if (_dataReader is null)
 			throw new ObjectDisposedException(GetType().Name);
 
-		var offset = GetRowOffset(fid);
-		if (offset <= 0) return -1; // no such fid (or deleted)
+		var offset = GetRowOffset(oid);
+		if (offset <= 0) return -1; // no such oid (or deleted)
 
 		_dataReader.Seek(offset);
 
@@ -297,12 +314,12 @@ public sealed class Table : IDisposable
 	}
 
 	/// <returns>Row data bytes, or null if no such row</returns>
-	public byte[]? ReadRowBytes(int fid)
+	public byte[]? ReadRowBytes(int oid)
 	{
 		if (_dataReader is null)
 			throw new ObjectDisposedException(GetType().Name);
 
-		var offset = GetRowOffset(fid);
+		var offset = GetRowOffset(oid);
 		if (offset <= 0) return null;
 
 		_dataReader.Seek(offset);
@@ -313,12 +330,12 @@ public sealed class Table : IDisposable
 		return buffer;
 	}
 
-	public object?[]? ReadRow(int fid)
+	public object?[]? ReadRow(int oid, object?[]? values = null)
 	{
 		if (_dataReader is null)
 			throw new ObjectDisposedException(GetType().Name);
 
-		var offset = GetRowOffset(fid);
+		var offset = GetRowOffset(oid);
 		if (offset <= 0) return null;
 
 		_dataReader.Seek(offset);
@@ -328,9 +345,15 @@ public sealed class Table : IDisposable
 		var nullFlags = ReadNullFlags(_dataReader, Fields);
 
 		var fieldCount = Fields.Count;
-		var values = new object?[fieldCount];
 
-		for (int i = 0, j = 0; i < fieldCount; i++)
+		if (values is null)
+		{
+			values = new object?[fieldCount];
+		}
+		//var values = new object?[fieldCount];
+		int maxField = Math.Min(values.Length, fieldCount);
+
+		for (int i = 0, j = 0; i < maxField; i++)
 		{
 			var field = Fields[i];
 
@@ -362,7 +385,7 @@ public sealed class Table : IDisposable
 					values[i] = ReadDateTimeField(_dataReader);
 					break;
 				case FieldType.ObjectID:
-					values[i] = fid;
+					values[i] = oid;
 					break;
 				case FieldType.Geometry:
 					values[i] = ReadGeometryBlob(_dataReader);
@@ -373,7 +396,6 @@ public sealed class Table : IDisposable
 				case FieldType.Raster:
 					// depends on RasterType in field definition
 					throw new NotImplementedException();
-					break;
 				case FieldType.GUID:
 				case FieldType.GlobalID:
 					values[i] = ReadGuidField(_dataReader);
@@ -386,7 +408,7 @@ public sealed class Table : IDisposable
 				case FieldType.DateTimeOffset:
 					throw new NotImplementedException($"Field of type {field.Type} not yet implemented");
 				default:
-					throw new ArgumentOutOfRangeException();
+					throw new NotSupportedException($"Unknown field type: {field.Type}");
 			}
 		}
 
@@ -396,13 +418,55 @@ public sealed class Table : IDisposable
 		return values;
 	}
 
-	private long GetRowOffset(int fid)
+	/// <summary>
+	/// Get the CLR data type used for the given field type.
+	/// </summary>
+	public static Type GetDataType(FieldType fieldType)
+	{
+		switch (fieldType)
+		{
+			case FieldType.Int16:
+				return typeof(short?);
+			case FieldType.Int32:
+				return typeof(int?);
+			case FieldType.Single:
+				return typeof(float?);
+			case FieldType.Double:
+				return typeof(double?);
+			case FieldType.String:
+			case FieldType.XML:
+				return typeof(string);
+			case FieldType.DateTime:
+				return typeof(DateTime?);
+			case FieldType.ObjectID:
+				return typeof(int);
+			case FieldType.Geometry:
+				return typeof(byte[]); // TODO unpacked type?
+			case FieldType.Blob:
+				return typeof(byte[]);
+			case FieldType.Raster:
+				return typeof(object); // TODO
+			case FieldType.GUID:
+			case FieldType.GlobalID:
+				return typeof(Guid?);
+			case FieldType.Int64:
+				return typeof(long?);
+			case FieldType.DateOnly:
+			case FieldType.TimeOnly:
+			case FieldType.DateTimeOffset:
+				return typeof(object); // TODO
+			default:
+				return typeof(object);
+		}
+	}
+
+	private long GetRowOffset(int oid)
 	{
 		if (_indexReader is null)
 			throw new ObjectDisposedException(GetType().Name);
 
-		fid -= 1; // from external 1-based to internal 0-based
-		if (fid < 0) return -1;
+		oid -= 1; // from external 1-based to internal 0-based
+		if (oid < 0) return -1;
 
 		/*
 		   if pabyTablXBlockMap:
@@ -437,21 +501,21 @@ public sealed class Table : IDisposable
 
 		if (_blockMap != null)
 		{
-			int iBlock = fid / 1024;
+			int iBlock = oid / 1024;
 			if (!_blockMap[iBlock])
-				return -1; // no such fid
+				return -1; // no such oid
 
 			int nCountBlocksBefore = 0; // TODO optimize for sequential reading
 			for (int i = 0; i < iBlock; i++)
 				nCountBlocksBefore += _blockMap[i] ? 1 : 0;
 
-			var iCorrectedRow = nCountBlocksBefore * 1024 + fid % 1024;
+			var iCorrectedRow = nCountBlocksBefore * 1024 + oid % 1024;
 
 			_indexReader.Seek(16 + _offsetSize * iCorrectedRow);
 		}
 		else
 		{
-			_indexReader.Seek(16 + fid * _offsetSize);
+			_indexReader.Seek(16 + oid * _offsetSize);
 		}
 
 		long result = _offsetSize switch
@@ -481,7 +545,7 @@ public sealed class Table : IDisposable
 		return rowBlobSize;
 	}
 
-	private static BitArray ReadNullFlags(DataReader dataReader, IReadOnlyList<Field> fields)
+	private static BitArray ReadNullFlags(DataReader dataReader, IReadOnlyList<FieldInfo> fields)
 	{
 		// assume reader positioned at row's null flags
 		// if all fields are non-nullable, there are no null flags stored
@@ -664,7 +728,7 @@ public sealed class Table : IDisposable
 		HasM = (flags & (1 << 30)) != 0;
 
 		// Field descriptions:
-		var fields = new List<Field>();
+		var fields = new List<FieldInfo>();
 		for (int i = 0; i < FieldCount; i++)
 		{
 			var nameChars = reader.ReadByte();
@@ -682,15 +746,15 @@ public sealed class Table : IDisposable
 
 		Debug.Assert(FieldCount == fields.Count);
 
-		Fields = new ReadOnlyCollection<Field>(fields);
+		Fields = new ReadOnlyCollection<FieldInfo>(fields);
 	}
 
-	private static Field ReadField(
+	private static FieldInfo ReadField(
 		string name, string alias, FieldType type, DataReader reader,
 		GeometryType geometryType, bool tableHasZ, bool tableHasM)
 	{
 		byte flag, size;
-		var field = new Field(name, alias, type);
+		var field = new FieldInfo(name, alias, type);
 
 		switch (type)
 		{
@@ -883,113 +947,211 @@ public sealed class Table : IDisposable
 		return field;
 	}
 
+	private IReadOnlyList<IndexInfo> LoadIndexes()
+	{
+		var fileName = Path.ChangeExtension(BaseName, ".gdbindexes");
+		var filePath = Path.Combine(FolderPath, fileName);
+		using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
+		using var reader = new DataReader(stream);
+
+		var numIndexes = reader.ReadInt32();
+		var indexes = new List<IndexInfo>();
+
+		for (int i = 0; i < numIndexes; i++)
+		{
+			int numNameChars = reader.ReadInt32();
+			string indexName = reader.ReadUtf16(numNameChars);
+
+			var magic1 = reader.ReadInt16();
+			var magic2 = reader.ReadInt32();
+			var magic3 = reader.ReadInt16();
+			var magic4 = reader.ReadInt32();
+
+			int numFieldChars = reader.ReadInt32();
+			string fieldName = reader.ReadUtf16(numFieldChars);
+
+			var magic5 = reader.ReadInt16();
+
+			// TODO IsUnique? IsAscending/Descending? Type (spatial/attribute)?
+
+			indexes.Add(new IndexInfo(indexName, fieldName));
+		}
+
+		return indexes;
+	}
+
 	private static Exception Error(string message)
 	{
 		return new IOException(message);
 	}
-}
 
-public class Field
-{
-	public string Name { get; }
-	public string Alias { get; }
-	public FieldType Type { get; }
-	public bool Nullable { get; set; }
-	public int Length { get; set; }
-	// Precision and Scale are always zero for File GDBs
-	// Required? Editable? Domain? DomainFixed? DefaultValue?
-	public GeometryDef? GeometryDef { get; set; }
-
-	public Field(string name, string? alias, FieldType type)
+	private static string? Canonical(string? text)
 	{
-		Name = name ?? throw new ArgumentNullException(nameof(name));
-		Alias = alias ?? string.Empty;
-		Type = type;
-	}
-
-	public override string ToString()
-	{
-		return $"{Name} Type={Type} Alias={Alias}";
+		if (text is null) return null;
+		text = text.Trim();
+		return text.Length < 1 ? null : text;
 	}
 }
 
-public class GeometryDef
+public abstract class RowsResult //: IEnumerable<int>, IEnumerator<int>
 {
-	public GeometryDef(GeometryType type)
+	// concrete subclasses: e.g. FullScanResult, TableSubsetResult, ...?
+
+	protected RowsResult(bool hasShape, IReadOnlyList<FieldInfo> fields)
 	{
-		GeometryType = type;
-		Grid = new GridIndex();
-		Extent = new Envelope();
+		HasShape = hasShape;
+		Fields = fields ?? throw new ArgumentNullException(nameof(fields));
 	}
 
-	private GeometryDef()
+	public IReadOnlyList<FieldInfo> Fields { get; }
+
+	public bool HasShape { get; }
+
+	/// <summary>Advance to next row (including the first row)</summary>
+	public abstract bool Step();
+
+	#region IEnumerable & IEnumerator
+
+	//IEnumerator IEnumerable.GetEnumerator()
+	//{
+	//	return GetEnumerator();
+	//}
+
+	//public IEnumerator<int> GetEnumerator()
+	//{
+	//	return this;
+	//}
+
+	//bool IEnumerator.MoveNext()
+	//{
+	//	return Step();
+	//}
+
+	//void IEnumerator.Reset()
+	//{
+	//	throw new NotImplementedException();
+	//}
+
+	//object IEnumerator.Current => OID;
+
+	//void IDisposable.Dispose()
+	//{
+	//	// nothing to dispose
+	//}
+
+	//int IEnumerator<int>.Current => OID;
+
+	#endregion
+
+	public abstract int OID { get; }
+
+	public abstract byte[]? Shape { get; } // null if no shape
+
+	public abstract object? GetValue(string fieldName);
+}
+
+public class TableScanResult : RowsResult
+{
+	private int _oid;
+	private readonly FieldInfo[] _fields;
+	private readonly object?[] _values;
+	private readonly int _maxOid;
+	private readonly Table _table;
+	private readonly IDictionary<string, int> _fieldIndices;
+	private readonly int _shapeFieldIndex;
+
+	public TableScanResult(Table table) : base(HasGeometry(table), GetFields(table))
 	{
-		GeometryType = GeometryType.Null;
-		Grid = new GridIndex();
-		Extent = new Envelope();
+		_table = table ?? throw new ArgumentNullException(nameof(table));
+		_oid = 0;
+		_maxOid = table.MaxObjectID;
+		_fields = table.Fields.ToArray();
+		_values = new object[_fields.Length];
+		_fieldIndices = new Dictionary<string, int>();
+		_shapeFieldIndex = FindShapeField(table.Fields);
 	}
 
-	public GeometryType GeometryType { get; }
-	public string? SpatialReference { get; set; }
-
-	public double XOrigin { get; set; }
-	public double YOrigin { get; set; }
-	public double XYScale { get; set; }
-	public double XYTolerance { get; set; }
-
-	public bool HasZ { get; set; }
-	public double ZOrigin { get; set; }
-	public double ZScale { get; set; }
-	public double ZTolerance { get; set; }
-
-	public bool HasM { get; set; }
-	public double MOrigin { get; set; }
-	public double MScale { get; set; }
-	public double MTolerance { get; set; }
-
-	public Envelope Extent { get; }
-
-	public GridIndex Grid { get; }
-
-	public static GeometryDef None { get; } = new();
-
-	public class GridIndex
+	public override bool Step()
 	{
-		private Dictionary<int, double>? _gridSizes = new();
+		_oid += 1;
 
-		public int Count { get; set; }
-
-		public double this[int index]
+		while (_oid <= _maxOid)
 		{
-			get => GridSizes.TryGetValue(index, out var value) ? value : 0;
-			set => GridSizes[index] = value;
+			var row = _table.ReadRow(_oid, _values);
+			if (row is not null) return true;
+			_oid += 1;
 		}
 
-		private IDictionary<int, double> GridSizes => _gridSizes ??= new();
+		return false; // exhausted
 	}
-}
 
-public class Envelope
-{
-	public double XMin { get; set; }
-	public double YMin { get; set; }
-	public double XMax { get; set; }
-	public double YMax { get; set; }
+	public override int OID => _oid;
 
-	public bool HasM { get; set; }
-	public double MMin { get; set; }
-	public double MMax { get; set; }
+	public override byte[]? Shape => GetShape();
 
-	public bool HasZ { get; set; }
-	public double ZMin { get; set; }
-	public double ZMax { get; set; }
-
-	public Envelope()
+	public override object? GetValue(string? fieldName)
 	{
-		XMin = XMax = double.NaN;
-		YMin = YMax = double.NaN;
+		if (fieldName is null) return null;
 
-		MMin = MMax = double.NaN;
-		ZMin = ZMax = double.NaN;
+		if (!_fieldIndices.TryGetValue(fieldName, out int index))
+		{
+			index = FindField(fieldName, _fields);
+			if (index < 0) throw new IOException($"No such field: {fieldName}");
+			_fieldIndices.Add(fieldName, index);
+		}
+
+		return _values[index];
+	}
+
+	private static int FindField(string fieldName, FieldInfo[] fields)
+	{
+		for (int i = 0; i < fields.Length; i++)
+		{
+			if (string.Equals(fieldName, fields[i].Name, StringComparison.OrdinalIgnoreCase))
+			{
+				return i;
+			}
+		}
+
+		return -1; // not found
+	}
+
+	/// <returns>index of first field of type Geometry, or -1 if no such field</returns>
+	private static int FindShapeField(IReadOnlyList<FieldInfo> fields)
+	{
+		int count = fields.Count;
+
+		for (int i = 0; i < count; i++)
+		{
+			if (fields[i].Type == FieldType.Geometry)
+			{
+				return i;
+			}
+		}
+
+		return -1; // no shape field
+	}
+
+	private byte[]? GetShape()
+	{
+		if (_shapeFieldIndex < 0)
+		{
+			return null; // table has no shape field
+		}
+
+		return _values[_shapeFieldIndex] as byte[]; // TODO unpack and cache
+	}
+
+	private static bool HasGeometry(Table? table)
+	{
+		if (table is null) return false;
+		return table.GeometryType != GeometryType.Null;
+	}
+
+	private static ImmutableArray<FieldInfo> GetFields(Table? table)
+	{
+		return table is null
+			? ImmutableArray<FieldInfo>.Empty
+			: table.Fields.ToImmutableArray();
 	}
 }

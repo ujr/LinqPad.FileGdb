@@ -33,7 +33,7 @@ namespace FileGDB.Core.Test
 		}
 
 		[Fact]
-		public void CanOpenFileGDB()
+		public async void CanOpenFileGDB()
 		{
 			var gdbPath = GetTempDataPath("Test1.gdb");
 
@@ -59,12 +59,12 @@ namespace FileGDB.Core.Test
 			Assert.Equal(gdbPath, table.FolderPath);
 			Assert.Equal("a00000001", table.BaseName);
 			// inspect table, especially table.Fields
-			long size = table.GetRowSize(1);
-			var bytes = table.ReadRowBytes(1);
+			//long size = table.GetRowSize(1);
+			//var bytes = table.ReadRowBytes(1);
 
 			foreach (var field in table.Fields)
 			{
-				_output.WriteLine($"Field {field.Name}, type {field.Type}, nullable={field.Nullable}, length={field.Length}");
+				_output.WriteLine($"Field {field.Name}, alias \"{field.Alias}\", type {field.Type}, nullable={field.Nullable}, length={field.Length}");
 			}
 
 			_output.WriteLine("");
@@ -85,6 +85,13 @@ namespace FileGDB.Core.Test
 			// 7  GDB_ItemRelationshipTypes
 			// 8  GDB_ReplicaLog
 			// 9+ User tables
+
+			_output.WriteLine("");
+
+			foreach (var index in table.Indexes)
+			{
+				_output.WriteLine($"Index {index.Name}, field {index.FieldName}");
+			}
 		}
 
 		[Fact]
@@ -145,7 +152,7 @@ namespace FileGDB.Core.Test
 
 			foreach (var field in table.Fields)
 			{
-				_output.WriteLine($"Field {field.Name}, type {field.Type}, length={field.Length}, nullable={field.Nullable}");
+				_output.WriteLine($"Field {field.Name}, alias \"{field.Alias}\", type {field.Type}, length={field.Length}, nullable={field.Nullable}");
 			}
 
 			_output.WriteLine("");

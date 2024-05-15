@@ -24,3 +24,41 @@ Size and name limits (from Esri's ArcGIS Pro documentation at
 - Feature class or table name length: 160 characters
 - Field name length: 64 characters
 - Text field width: 2,147,483,647 characters
+
+## Configuration Keywords
+
+List of keywords and how they affect data storage.
+It is for ArcGIS 10.0 and cannot be customized.
+Additional keywords may be added in later releases.
+
+- DEFAULTS:  
+  Stores data up to 1 TB in size. Text is stored in UTF8 format.
+
+- TEXT_UTF16:  
+  Stores data up to 1 TB in size. Text is stored in UTF16 format.
+
+- MAX_FILE_SIZE_4GB:  
+  Limits data size to 4 GB. Text is stored in UTF8 format.
+
+- MAX_FILE_SIZE_256TB:
+  Stores data up to 256 TB in size. Text is stored in UTF8 format
+
+- GEOMETRY_OUTOFLINE:
+  Stores data up to 1 TB in size. Text is stored in UTF8 format. Stores the geometry attribute in a file separate from the nonspatial attributes
+
+- BLOB_OUTOFLINE:
+  Stores data up to 1 TB in size. Text is stored in UTF8 format. Stores BLOB attributes in a file separate from the rest of the attributes.
+
+- GEOMETRY_AND_BLOB_OUTOFLINE:
+  Stores data up to 1 TB in size. Text is stored in UTF8 format. Stores both geometry and BLOB attributes in files separate from the rest of the attributes.
+
+## Resources
+
+- Specification (reverse-engineered) by Even Rouault:  
+  <https://github.com/rouault/dump_gdbtable/wiki/FGDB-Spec>
+
+- Esri's File Geodatabase API on GitHub:  
+  <https://github.com/Esri/file-geodatabase-api>
+
+- Esri File Geodatabase API topic in GeoNet:  
+  <https://community.esri.com/t5/file-geodatabase-api/ct-p/file-geodatabase-api>

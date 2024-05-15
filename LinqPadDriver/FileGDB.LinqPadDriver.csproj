@@ -1,11 +1,12 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 	<!--Sdk="Microsoft.NET.Sdk.WindowsDesktop"?-->
 
 	<PropertyGroup>
     <TargetFramework>net6.0-windows</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
+    <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
 		<UseWpf>true</UseWpf>
+    <UseWindowsForms>true</UseWindowsForms>
 		<!--Since we have only one TargetFramework (no dual-build), don't append it:-->
 		<AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
 		<GeneratePackageOnBuild>true</GeneratePackageOnBuild>

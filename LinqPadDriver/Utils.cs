@@ -1,0 +1,99 @@
+using System;
+using System.Text;
+using System.Windows.Forms;
+using LINQPad.Extensibility.DataContext;
+using LinqPadDriver;
+
+namespace FileGDB.LinqPadDriver;
+
+public static class Utils
+{
+	// Custom connection properties are in the ConnectionInfo.DriverData
+	// XElement and will be persisted by LINQPad.
+
+	public static string? GetGdbFolderPath(this IConnectionInfo cxInfo)
+	{
+		if (cxInfo is null)
+			throw new ArgumentNullException(nameof(cxInfo));
+		var driverData = cxInfo.DriverData;
+		var path = (string?)driverData?.Element(Constants.DriverDataFolderPath);
+		return path?.Trim();
+	}
+
+	public static void SetGdbFolderPath(this IConnectionInfo cxInfo, string? value)
+	{
+		if (cxInfo is null)
+			throw new ArgumentNullException(nameof(cxInfo));
+		var driverData = cxInfo.DriverData;
+		if (driverData is null)
+			throw new InvalidOperationException($"{nameof(cxInfo.DriverData)} is null");
+		driverData.SetElementValue(Constants.DriverDataFolderPath, value?.Trim() ?? string.Empty);
+	}
+
+	public static string FormatString(string text)
+	{
+		var sb = new StringBuilder();
+		FormatString(text, sb);
+		return sb.ToString();
+	}
+
+	/// <summary>
+	/// Format the given <paramref name="value"/> as a valid C# string
+	/// (surrogate pairs and non-printable Unicode stuff not handled)
+	/// </summary>
+	public static void FormatString(string value, StringBuilder result)
+	{
+		int len = value.Length;
+
+		result.Append('"');
+
+		for (int j = 0; j < len; j++)
+		{
+			char c = value[j];
+
+			const string escapes = "\"\"\\\\\bb\ff\nn\rr\tt";
+			int k = escapes.IndexOf(c);
+
+			if (k >= 0 && k % 2 == 0)
+			{
+				result.Append('\\');
+				result.Append(escapes[k + 1]);
+			}
+			else if (char.IsControl(c))
+			{
+				result.AppendFormat("\\u{0:x4}", (int)c);
+			}
+			else
+			{
+				result.Append(c);
+			}
+		}
+
+		result.Append('"');
+	}
+
+	public static IWin32Window GetIWin32Window(this System.Windows.Media.Visual visual)
+	{
+		// IWin32Window from System.Windows.Forms, NOT from System.Windows.Interop!
+		var source = System.Windows.PresentationSource.FromVisual(visual);
+		
+		if (source is System.Windows.Interop.HwndSource hwndSource)
+		{
+			return new OldWindowAdapter(hwndSource.Handle);
+		}
+
+		return null!;
+	}
+
+	private class OldWindowAdapter : IWin32Window
+	{
+		private readonly IntPtr _handle;
+
+		public OldWindowAdapter(IntPtr handle)
+		{
+			_handle = handle;
+		}
+
+		IntPtr IWin32Window.Handle => _handle;
+	}
+}

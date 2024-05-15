@@ -1,9 +1,9 @@
-﻿using System.ComponentModel;
+using System;
+using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Xml.Linq;
 using LINQPad.Extensibility.DataContext;
 
-namespace LinqPadDriver;
+namespace FileGDB.LinqPadDriver;
 
 /// <summary>
 /// Wrapper to read/write connection properties.
@@ -18,19 +18,14 @@ public class ConnectionProperties : INotifyPropertyChanged
 
 	public IConnectionInfo ConnectionInfo { get; }
 
-	private XElement DriverData => ConnectionInfo.DriverData;
-
-	// Custom connection properties are in the ConnectionInfo.DriverData
-	// XElement and will be persisted by LINQPad.
-
 	public string? FolderPath
 	{
-		get => (string?)DriverData.Element(Constants.DriverDataFolderPath) ?? string.Empty;
+		get => ConnectionInfo.GetGdbFolderPath();
 		set
 		{
 			if (!string.Equals(value, FolderPath))
 			{
-				DriverData.SetElementValue(Constants.DriverDataFolderPath, value ?? string.Empty);
+				ConnectionInfo.SetGdbFolderPath(value);
 				OnPropertyChanged();
 			}
 		}
