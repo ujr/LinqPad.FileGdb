@@ -200,7 +200,7 @@ public sealed class Table : IDisposable
 	public bool HasM { get; private set; }
 	public bool UseUtf8 { get; private set; }
 	public IReadOnlyList<FieldInfo> Fields { get; private set; }
-	public int MaxEntrySize { get; private set; }
+	//public int MaxEntrySize { get; private set; }
 	public int MaxObjectID { get; private set; } // TODO unsure (experiment with deleting rows)
 	public IReadOnlyList<IndexInfo> Indexes => _indexes ??= LoadIndexes();
 
@@ -289,11 +289,6 @@ public sealed class Table : IDisposable
 		if (extent != null)
 			throw new NotImplementedException("Spatial extent restriction not yet implemented");
 
-		return FullTableScan(fields);
-	}
-
-	private RowsResult FullTableScan(string? fields)
-	{
 		return new TableScanResult(this);
 	}
 

@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Dynamic;
 using System.Linq;
 using FileGDB.Core;
 using JetBrains.Annotations;
@@ -157,7 +158,7 @@ public class FileGdbContext : IDisposable
 		}
 	}
 
-	public class TableProxy : IEnumerable<RowProxy>, IDisposable
+	public class TableProxy : IEnumerable<ExpandoObject>, IDisposable
 	{
 		private readonly Table _table;
 
@@ -188,22 +189,34 @@ public class FileGdbContext : IDisposable
 			return GetEnumerator();
 		}
 
-		public IEnumerator<RowProxy> GetEnumerator()
+		public IEnumerator<ExpandoObject> GetEnumerator()
 		{
 			//System.Diagnostics.Debugger.Launch();
 
-			var fields = _table.Fields;
+			var result = _table.Search(null, null, null);
+
+			var fields = result.Fields;
 			var values = new object?[fields.Count];
 
-			var rows = _table.Search(null, null, null);
-			while (rows.Step())
+			while (result.Step())
 			{
+				var row = new ExpandoObject();
+				var dict = (IDictionary<string, object?>)row;
+
 				for (int i = 0; i < values.Length; i++)
 				{
-					values[i] = rows.GetValue(fields[i].Name);
+					var name = fields[i].Name;
+					dict.Add(name, result.GetValue(name));
 				}
 
-				yield return new RowProxy(_table.Fields, values);
+				yield return row;
+
+				//for (int i = 0; i < values.Length; i++)
+				//{
+				//	values[i] = result.GetValue(fields[i].Name);
+				//}
+
+				//yield return new RowProxy(_table.Fields, values);
 			}
 		}
 	}

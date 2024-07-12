@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Dynamic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -118,6 +119,25 @@ public class FileGdbDriver : StaticDataContextDriver
 		yield return typeof(Core.FileGDB).Namespace!;
 	}
 
+	public override void DisplayObjectInGrid(object objectToDisplay, GridOptions options)
+	{
+		if (objectToDisplay is FileGdbContext.RowProxy row)
+		{
+			Debugger.Launch();
+			dynamic obj = new ExpandoObject();
+			var dict = (IDictionary<string, object?>)obj;
+
+			foreach (var foo in row.GetNames().Zip(row.GetValues()))
+			{
+				dict.Add(foo.First, foo.Second);
+			}
+
+			objectToDisplay = obj;
+		}
+
+		base.DisplayObjectInGrid(objectToDisplay, options);
+	}
+
 	public override List<ExplorerItem> GetSchema(IConnectionInfo cxInfo, Type customType)
 	{
 		var gdbFolderPath = cxInfo.GetGdbFolderPath();
@@ -152,33 +172,33 @@ public class FileGdbDriver : StaticDataContextDriver
 
 	private static List<ExplorerItem> GetSystemTableItems()
 	{
-		var systemProperty = nameof(FileGdbContext.GDB);
+		const string systemTables = nameof(FileGdbContext.GDB);
 
 		var list = new List<ExplorerItem>
 		{
 			CreateSystemItem("GDB_SystemCatalog",
-				$"{systemProperty}.{nameof(FileGdbContext.SystemTables.SystemCatalog)}",
+				$"{systemTables}.{nameof(FileGdbContext.SystemTables.SystemCatalog)}",
 				"Catalog system table (list of all tables)"),
 			CreateSystemItem("GDB_DBTune",
-				$"{systemProperty}.{nameof(FileGdbContext.SystemTables.DBTune)}",
+				$"{systemTables}.{nameof(FileGdbContext.SystemTables.DBTune)}",
 				"DBTune system table (config keyword parameters)"),
 			CreateSystemItem("GDB_SpatialRefs",
-				$"{systemProperty}.{nameof(FileGdbContext.SystemTables.SpatialRefs)}",
+				$"{systemTables}.{nameof(FileGdbContext.SystemTables.SpatialRefs)}",
 				"Spatial references used by tables in this File GDB"),
 			CreateSystemItem("GDB_Items",
-				$"{systemProperty}.{nameof(FileGdbContext.SystemTables.Items)}",
+				$"{systemTables}.{nameof(FileGdbContext.SystemTables.Items)}",
 				"The GDB_Items system table"),
 			CreateSystemItem("GDB_ItemTypes",
-				$"{systemProperty}.{nameof(FileGdbContext.SystemTables.ItemTypes)}",
+				$"{systemTables}.{nameof(FileGdbContext.SystemTables.ItemTypes)}",
 				"The GDB_ItemTypes system table"),
 			CreateSystemItem("GDB_ItemRelationships",
-				$"{systemProperty}.{nameof(FileGdbContext.SystemTables.ItemRelationships)}",
+				$"{systemTables}.{nameof(FileGdbContext.SystemTables.ItemRelationships)}",
 				"The GDB_ItemRelationships system table"),
 			CreateSystemItem("GDB_ItemRelationshipTypes",
-				$"{systemProperty}.{nameof(FileGdbContext.SystemTables.ItemRelationshipTypes)}",
+				$"{systemTables}.{nameof(FileGdbContext.SystemTables.ItemRelationshipTypes)}",
 				"The GDB_ItemRelationshipTypes system table"),
 			CreateSystemItem("GDB_ReplicaLog",
-				$"{systemProperty}.{nameof(FileGdbContext.SystemTables.ReplicaLog)}",
+				$"{systemTables}.{nameof(FileGdbContext.SystemTables.ReplicaLog)}",
 				"The ReplicaLog system table (may not exist)")
 		};
 

@@ -41,7 +41,7 @@ public static class Utils
 	/// Format the given <paramref name="value"/> as a valid C# string
 	/// (surrogate pairs and non-printable Unicode stuff not handled)
 	/// </summary>
-	public static void FormatString(string value, StringBuilder result)
+	private static void FormatString(string value, StringBuilder result)
 	{
 		int len = value.Length;
 
