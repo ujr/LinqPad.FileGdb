@@ -383,7 +383,7 @@ public sealed class Table : IDisposable
 					values[i] = oid;
 					break;
 				case FieldType.Geometry:
-					values[i] = ReadGeometryBlob(_dataReader);
+					values[i] = ReadGeometryBlob(_dataReader, field.GeometryDef);
 					break;
 				case FieldType.Blob:
 					values[i] = ReadBlobField(_dataReader);
@@ -558,14 +558,17 @@ public sealed class Table : IDisposable
 		return new BitArray(bytes.ToArray());
 	}
 
-	private static byte[] ReadGeometryBlob(DataReader reader)
+	private static Shape ReadGeometryBlob(DataReader reader, GeometryDef geomDef)
 	{
 		// assume reader positioned at start of field data
 		var size = reader.ReadVarUInt();
 		if (size > int.MaxValue)
 			throw Error("Geometry field too large for this API");
 		var bytes = reader.ReadBytes((int)size);
-		return bytes;
+		Debugger.Launch();
+		var r = new GeometryBlobReader(geomDef, bytes);
+		var shape = r.ReadShape();
+		return shape;
 	}
 
 	private static byte[] ReadBlobField(DataReader reader)
@@ -761,6 +764,8 @@ public sealed class Table : IDisposable
 
 			case FieldType.Geometry:
 				var geomDef = new GeometryDef(geometryType);
+				geomDef.HasZ = tableHasZ;
+				geomDef.HasM = tableHasM;
 				_ = reader.ReadByte(); // unknown (always 0?)
 				flag = reader.ReadByte();
 				field.Nullable = (flag & 1) != 0;
@@ -768,30 +773,30 @@ public sealed class Table : IDisposable
 				var wkt = reader.ReadUtf16(wktLen / 2); // in chars
 				geomDef.SpatialReference = wkt;
 				var geomFlags = reader.ReadByte();
-				// weird, but these are different from the table-level HasZ/M flags
-				bool hasM = (geomFlags & 2) != 0; // and therefore also M scale, domain, tolerance
-				bool hasZ = (geomFlags & 4) != 0; // and therefore also Z scale, domain, tolerance
+				// weird, but these are different from the table-level HasZ/M flags:
+				bool hasInfoM = (geomFlags & 2) != 0; // i.e., M scale, domain, tolerance
+				bool hasInfoZ = (geomFlags & 4) != 0; // i.e., Z scale, domain, tolerance
 				geomDef.XOrigin = reader.ReadDouble();
 				geomDef.YOrigin = reader.ReadDouble();
 				geomDef.XYScale = reader.ReadDouble();
-				if (hasM)
+				if (hasInfoM)
 				{
-					geomDef.HasM = true; // TODO unsure, better use tableHasM?
+					//geomDef.HasM = tableHasM;
 					geomDef.MOrigin = reader.ReadDouble();
 					geomDef.MScale = reader.ReadDouble();
 				}
-				if (hasZ)
+				if (hasInfoZ)
 				{
-					geomDef.HasZ = true; // TODO unsure, ditto
+					//geomDef.HasZ = tableHasZ;
 					geomDef.ZOrigin = reader.ReadDouble();
 					geomDef.ZScale = reader.ReadDouble();
 				}
 				geomDef.XYTolerance = reader.ReadDouble();
-				if (hasM)
+				if (hasInfoM)
 				{
 					geomDef.MTolerance = reader.ReadDouble();
 				}
-				if (hasZ)
+				if (hasInfoZ)
 				{
 					geomDef.ZTolerance = reader.ReadDouble();
 				}
