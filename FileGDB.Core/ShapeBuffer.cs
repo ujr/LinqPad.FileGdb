@@ -283,7 +283,7 @@ public class GeometryBlobReader
 				dx += ix;
 				var iy = ReadVint();
 				dy += iy;
-				_factory.AddXY(XOrigin + dx / XYScale, XOrigin + dy / XYScale);
+				_factory.AddXY(XOrigin + dx / XYScale, YOrigin + dy / XYScale);
 			}
 
 			if (HasZ)
@@ -328,7 +328,7 @@ public class GeometryBlobReader
 				dx += ix;
 				var iy = ReadVint();
 				dy += iy;
-				_factory.AddXY(XOrigin + dx / XYScale, XOrigin + dy / XYScale);
+				_factory.AddXY(XOrigin + dx / XYScale, YOrigin + dy / XYScale);
 			}
 
 			if (HasZ)
@@ -367,16 +367,16 @@ public class GeometryBlobReader
 		if (_index >= _bytes.Length)
 			throw ReadingBeyondBlob();
 		byte b = _bytes[_index++];
-		ulong result = (ulong)(b & 0x3F);
+		long result = b & 0x3F;
 		int sign = (b & 0x40) != 0 ? -1 : 1;
-		if ((b & 0x80) == 0) return sign * (long) result;
+		if ((b & 0x80) == 0) return sign * result;
 		int shift = 6; // without continuation bit and sign bit
 		// TODO check for overflow
 		while (_index < _bytes.Length)
 		{
 			b = _bytes[_index++];
-			result |= (ulong)(b & 127) << shift;
-			if ((b & 0x80) != 0) return sign * (long) result;
+			result |= (long)(b & 127) << shift;
+			if ((b & 0x80) == 0) return sign * result;
 			shift += 7;
 		}
 
@@ -774,26 +774,36 @@ public abstract class MultipartShape : PointListShape
 	protected MultipartShape(uint shapeType,
 		IReadOnlyList<XY> xys, IReadOnlyList<double>? zs = null,
 		IReadOnlyList<double>? ms = null, IReadOnlyList<int>? ids = null,
-		IReadOnlyList<int>? partStarts = null)
+		IReadOnlyList<int>? partVertexCounts = null)
 		: base(shapeType, xys, zs, ms, ids)
 	{
-		if (partStarts is not null)
+		_partStarts = GetPartStarts(partVertexCounts, NumPoints);
+	}
+
+	private static int[] GetPartStarts(IReadOnlyList<int>? partVertexCounts, int totalVertexCount)
+	{
+		if (partVertexCounts is null)
 		{
-			int lastPartStart = 0;
-			for (int k = 0; k < partStarts.Count; k++)
-			{
-				int i = partStarts[k];
-				if (i < 0)
-					throw new ArgumentException("part starts must not be negative", nameof(partStarts));
-				if (i >= NumPoints)
-					throw new ArgumentException("part starts must be less than point count", nameof(partStarts));
-				if (i < lastPartStart)
-					throw new ArgumentException("part starts must be monotonically increasing", nameof(partStarts));
-				lastPartStart = i;
-			}
+			return null!; // ?? new[] { 0 };
 		}
 
-		_partStarts = partStarts;// ?? new[] { 0 };
+		int startIndex = 0;
+		int numParts = partVertexCounts.Count;
+
+		var starts = new int[numParts];
+
+		for (int i = 0; i < numParts; i++)
+		{
+			starts[i] = startIndex;
+			startIndex += partVertexCounts[i];
+		}
+
+		if (totalVertexCount >= 0 && startIndex != totalVertexCount)
+		{
+			throw new ArgumentException("Given part vertex counts don't sum up to NumPoints");
+		}
+
+		return starts;
 	}
 
 	public int NumParts => _partStarts?.Count ?? 1;
