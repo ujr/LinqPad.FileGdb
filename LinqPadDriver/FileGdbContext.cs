@@ -184,10 +184,7 @@ public class FileGdbContext : IDisposable
 		[PublicAPI] public int MaxOID => _table.MaxObjectID;
 		[PublicAPI] public IReadOnlyList<FieldInfo> Fields => _table.Fields;
 
-		IEnumerator IEnumerable.GetEnumerator()
-		{
-			return GetEnumerator();
-		}
+		IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
 		public IEnumerator<ExpandoObject> GetEnumerator()
 		{

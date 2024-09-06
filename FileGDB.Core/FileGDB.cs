@@ -416,6 +416,7 @@ public sealed class Table : IDisposable
 	/// <summary>
 	/// Get the CLR data type used for the given field type.
 	/// </summary>
+	// TODO shouldn't this be on FileGDB class? on the other hand, it corresponds with ReadRow above
 	public static Type GetDataType(FieldType fieldType)
 	{
 		switch (fieldType)
@@ -436,7 +437,7 @@ public sealed class Table : IDisposable
 			case FieldType.ObjectID:
 				return typeof(int);
 			case FieldType.Geometry:
-				return typeof(byte[]); // TODO unpacked type?
+				return typeof(Shape);
 			case FieldType.Blob:
 				return typeof(byte[]);
 			case FieldType.Raster:
@@ -565,7 +566,7 @@ public sealed class Table : IDisposable
 		if (size > int.MaxValue)
 			throw Error("Geometry field too large for this API");
 		var bytes = reader.ReadBytes((int)size);
-		Debugger.Launch();
+		//Debugger.Launch();
 		var r = new GeometryBlobReader(geomDef, bytes);
 		var shape = r.ReadShape();
 		return shape;
