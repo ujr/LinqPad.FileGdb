@@ -10,6 +10,7 @@ public class WKTWriter : IDisposable
 	private State _state;
 	private int _partIndex;
 	private int _vertexIndex;
+	private bool _newPolygon;
 
 	public WKTWriter(TextWriter writer)
 	{
@@ -73,7 +74,6 @@ public class WKTWriter : IDisposable
 
 	public void BeginMultiPolygon(bool? hasZ = null, bool? hasM = null, bool? hasID = null)
 	{
-		throw new NotImplementedException();
 		BeginShape(State.MultiPolygon, hasZ, hasM, hasID);
 	}
 
@@ -96,6 +96,23 @@ public class WKTWriter : IDisposable
 		_vertexIndex = 0;
 	}
 
+	public void NewPolygon()
+	{
+		if (_state != State.MultiPolygon)
+			throw InvalidOperation("Not writing a MultiPolygon");
+
+		// NewPolygon right after BeginShape is a no-op and always allowed:
+		if (_vertexIndex == 0 && _partIndex == 0) return;
+
+		if (_vertexIndex > 0)
+		{
+			_partIndex += 1;
+		}
+
+		_newPolygon = true;
+		_vertexIndex = 0;
+	}
+
 	public void AddVertex(double x, double y, double z = double.NaN, double m = double.NaN, int? id = null)
 	{
 		if (_state == State.Initial)
@@ -114,11 +131,22 @@ public class WKTWriter : IDisposable
 		{
 			if (_partIndex == 0)
 			{
-				_writer.Write(IsMultiPart(_state) ? " ((" : " (");
+				if (_state == State.MultiPolygon)
+				{
+					_writer.Write(" (((");
+				}
+				else if (IsMultiPart(_state))
+				{
+					_writer.Write(" ((");
+				}
+				else
+				{
+					_writer.Write(" (");
+				}
 			}
 			else
 			{
-				_writer.Write("), (");
+				_writer.Write(_newPolygon ? ")), ((" : "), (");
 			}
 		}
 		else if (_vertexIndex > 0)
@@ -156,6 +184,7 @@ public class WKTWriter : IDisposable
 		}
 
 		_vertexIndex += 1;
+		_newPolygon = false;
 	}
 
 	public void EndShape()
@@ -169,6 +198,11 @@ public class WKTWriter : IDisposable
 		}
 		else
 		{
+			if (_state == State.MultiPolygon)
+			{
+				_writer.Write(")");
+			}
+
 			if (IsMultiPart(_state))
 			{
 				_writer.Write(")");
@@ -180,6 +214,7 @@ public class WKTWriter : IDisposable
 		_state = State.Initial;
 		_partIndex = 0;
 		_vertexIndex = 0;
+		_newPolygon = false;
 	}
 
 	public void WritePoint(double x, double y, double z = double.NaN, double m = double.NaN, int? id = null)
@@ -307,6 +342,7 @@ public class WKTWriter : IDisposable
 		_state = state;
 		_partIndex = 0;
 		_vertexIndex = 0;
+		_newPolygon = false;
 
 		// NB: cannot write opening paren here as the shape may be empty!
 	}

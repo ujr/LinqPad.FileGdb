@@ -239,6 +239,7 @@ public class GeometryBlobReader
 		// first is geometry type:
 		var type = ReadVuint();
 		var geometryType = ShapeBuffer.GetGeometryType(type);
+
 		if (geometryType is GeometryType.Point)
 		{
 			var ix = ReadVuint();
@@ -443,7 +444,8 @@ public abstract class Shape
 
 	public abstract bool IsEmpty { get; }
 
-	public abstract string ToWKT(); // TODO overloads void ToWKT(StringBuilder) and ToWKT(TextWriter)
+	public abstract string ToWKT(int decimalDigits = -1);
+	// TODO overloads void ToWKT(StringBuilder) and ToWKT(TextWriter)
 
 	// Shape FromShapeBuffer(byte[] bytes)
 	// byte[] ToShapeBuffer(byte[] bytes = null)
@@ -590,10 +592,10 @@ public class BoxShape : Shape
 	                                double.IsNaN(YMin) || double.IsNaN(YMax) ||
 	                                XMin > XMax || YMin > YMax;
 
-	public override string ToWKT()
+	public override string ToWKT(int decimalDigits = -1)
 	{
 		var buffer = new StringBuilder();
-		var writer = new WKTWriter(buffer);
+		var writer = new WKTWriter(buffer) { DecimalDigits = decimalDigits };
 		writer.WriteBox(XMin, YMin, XMax, YMax, ZMin, ZMax, MMin, MMax);
 		writer.Flush();
 		return buffer.ToString();
@@ -639,10 +641,10 @@ public class PointShape : Shape
 
 	public override bool IsEmpty => double.IsNaN(X) || double.IsNaN(Y);
 
-	public override string ToWKT()
+	public override string ToWKT(int decimalDigits = -1)
 	{
 		var buffer = new StringBuilder();
-		var writer = new WKTWriter(buffer);
+		var writer = new WKTWriter(buffer) { DecimalDigits = decimalDigits };
 		writer.WritePoint(X, Y, Z, M, ID);
 		writer.Flush();
 		return buffer.ToString();
@@ -748,10 +750,10 @@ public class MultipointShape : PointListShape
 		return flags;
 	}
 
-	public override string ToWKT()
+	public override string ToWKT(int decimalDigits = -1)
 	{
 		var buffer = new StringBuilder();
-		var writer = new WKTWriter(buffer);
+		var writer = new WKTWriter(buffer) { DecimalDigits = decimalDigits };
 		writer.BeginMultipoint(HasZ, HasM, HasID);
 		for (int i = 0; i < NumPoints; i++)
 		{
@@ -902,10 +904,10 @@ public class PolylineShape : MultipartShape
 		return _partsCache[partIndex]!;
 	}
 
-	public override string ToWKT()
+	public override string ToWKT(int decimalDigits = -1)
 	{
 		var buffer = new StringBuilder();
-		var writer = new WKTWriter(buffer);
+		var writer = new WKTWriter(buffer) { DecimalDigits = decimalDigits };
 
 		writer.BeginMultiLineString(HasZ, HasM, HasID);
 
@@ -989,10 +991,10 @@ public class PolygonShape : MultipartShape
 		return _partsCache[partIndex]!;
 	}
 
-	public override string ToWKT()
+	public override string ToWKT(int decimalDigits = -1)
 	{
 		var buffer = new StringBuilder();
-		var writer = new WKTWriter(buffer);
+		var writer = new WKTWriter(buffer) { DecimalDigits = decimalDigits };
 
 		writer.BeginMultiPolygon(HasZ, HasM, HasID);
 

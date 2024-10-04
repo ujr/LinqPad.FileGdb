@@ -234,7 +234,7 @@ public class WKTWriterTest
 		Assert.Equal("POLYGON ZMID EMPTY", buffer.ToString());
 	}
 
-	[Fact(Skip="not yet implemented")]
+	[Fact]//[Fact(Skip="not yet implemented")]
 	public void CanWriteMultiPolygon()
 	{
 		var buffer = new StringBuilder();
@@ -242,7 +242,31 @@ public class WKTWriterTest
 
 		buffer.Clear();
 		writer.BeginMultiPolygon();
-		// TODO
+		writer.EndShape();
+		writer.Flush();
+		Assert.Equal("MULTIPOLYGON EMPTY", buffer.ToString());
+
+		buffer.Clear();
+		writer.BeginMultiPolygon();
+		writer.AddVertex(0, 0);
+		writer.AddVertex(4, 0);
+		writer.AddVertex(4, 4);
+		writer.AddVertex(0, 4);
+		writer.AddVertex(0, 0);
+		writer.NewPart();
+		writer.AddVertex(1, 1);
+		writer.AddVertex(2, 1);
+		writer.AddVertex(2, 2);
+		writer.AddVertex(1, 2);
+		writer.AddVertex(1, 1);
+		writer.NewPolygon();
+		writer.AddVertex(-1, -1);
+		writer.AddVertex(-1, -2);
+		writer.AddVertex(-2, -2);
+		writer.AddVertex(-2, -1);
+		writer.AddVertex(-1, -1);
+		writer.EndShape();
+		writer.Flush();
 		Assert.Equal("MULTIPOLYGON (((0 0, 4 0, 4 4, 0 4, 0 0), (1 1, 2 1, 2 2, 1 2, 1 1)), ((-1 -1, -1 -2, -2 -2, -2 -1, -1 -1)))",
 			buffer.ToString());
 	}
