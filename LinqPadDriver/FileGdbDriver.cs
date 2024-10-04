@@ -12,6 +12,7 @@ using System.Text;
 using System.Xml;
 using FileGDB.Core;
 using JetBrains.Annotations;
+using LINQPad;
 using LINQPad.Extensibility.DataContext;
 using LinqPadDriver;
 using static FileGDB.LinqPadDriver.FileGdbContext;
@@ -122,6 +123,101 @@ public class FileGdbDriver : DynamicDataContextDriver
 	{
 		//Debugger.Launch();
 		yield return typeof(Core.FileGDB).Namespace!;
+	}
+
+	public override void PreprocessObjectToWrite(ref object objectToWrite, ObjectGraphInfo info)
+	{
+		if (objectToWrite is Shape shape)
+		{
+			objectToWrite = ShapeProxy.Get(shape);
+		}
+		base.PreprocessObjectToWrite(ref objectToWrite, info);
+	}
+
+	private class ShapeProxy
+	{
+		protected Shape Shape { get; }
+
+		protected ShapeProxy(Shape shape)
+		{
+			Shape = shape ?? throw new ArgumentNullException(nameof(shape));
+		}
+
+		public GeometryType Type => Shape.Type;
+		public ShapeFlags Flags => Shape.Flags;
+		public bool IsEmpty => Shape.IsEmpty;
+		public object Box => Util.OnDemand("Box", () => Shape.Box);
+
+		public static ShapeProxy? Get(Shape? shape)
+		{
+			if (shape is null) return null;
+			if (shape is PointShape point) return new PointShapeProxy(point);
+			if (shape is BoxShape box) return new BoxShapeProxy(box);
+			if (shape is MultipointShape multipoint) return new MultipointShapeProxy(multipoint);
+			if (shape is PolylineShape polyline) return new PolylineShapeProxy(polyline);
+			if (shape is PolygonShape polygon) return new PolygonShapeProxy(polygon);
+			throw new NotSupportedException($"Unknown shape type {shape.GetType().Name}");
+		}
+	}
+
+	private class PointShapeProxy : ShapeProxy
+	{
+		public PointShapeProxy(PointShape shape) : base(shape) { }
+
+		public double X => ((PointShape)Shape).X;
+		public double Y => ((PointShape)Shape).Y;
+		public double Z => ((PointShape)Shape).Z;
+		public double M => ((PointShape)Shape).M;
+		public int ID => ((PointShape)Shape).ID;
+	}
+
+	private class BoxShapeProxy : ShapeProxy
+	{
+		public BoxShapeProxy(BoxShape shape) : base(shape) { }
+
+		public double XMin => ((BoxShape)Shape).XMin;
+		public double YMin => ((BoxShape)Shape).YMin;
+		public double XMax => ((BoxShape)Shape).XMax;
+		public double YMax => ((BoxShape)Shape).YMax;
+		public double ZMin => ((BoxShape)Shape).ZMin;
+		public double ZMax => ((BoxShape)Shape).ZMax;
+		public double MMin => ((BoxShape)Shape).MMin;
+		public double MMax => ((BoxShape)Shape).MMax;
+	}
+
+	private class PointListShapeProxy : ShapeProxy
+	{
+		protected PointListShapeProxy(PointListShape shape) : base(shape) { }
+
+		public object Points => Util.OnDemand(PointsLabel, () => ((PointListShape)Shape).Points);
+
+		private string PointsLabel => $"Points ({((PointListShape)Shape).NumPoints})";
+	}
+
+	private class MultipointShapeProxy : PointListShapeProxy
+	{
+		public MultipointShapeProxy(MultipointShape shape) : base(shape) { }
+	}
+
+	private class MultipartShapeProxy : PointListShapeProxy
+	{
+		protected MultipartShapeProxy(MultipartShape shape) : base(shape) { }
+
+		protected string PartsLabel => $"Parts ({((MultipartShape)Shape).NumParts})";
+	}
+
+	private class PolylineShapeProxy : MultipartShapeProxy
+	{
+		public PolylineShapeProxy(PolylineShape shape) : base(shape) { }
+
+		public object Parts => Util.OnDemand(PartsLabel, () => ((PolylineShape)Shape).Parts);
+	}
+
+	private class PolygonShapeProxy : MultipartShapeProxy
+	{
+		public PolygonShapeProxy(PolygonShape shape) : base(shape) { }
+
+		public object Parts => Util.OnDemand(PartsLabel, () => ((PolygonShape)Shape).Parts);
 	}
 
 	//public override void DisplayObjectInGrid(object objectToDisplay, GridOptions options)

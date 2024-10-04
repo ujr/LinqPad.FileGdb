@@ -3,6 +3,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using FileGDB.Core;
 using FileGDB.LinqPadDriver;
 
 namespace NAMESPACE;
