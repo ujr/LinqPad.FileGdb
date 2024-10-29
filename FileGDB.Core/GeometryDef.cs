@@ -2,9 +2,11 @@ namespace FileGDB.Core;
 
 public class GeometryDef
 {
-	public GeometryDef(GeometryType type)
+	public GeometryDef(GeometryType type, bool hasZ = false, bool hasM = false)
 	{
 		GeometryType = type;
+		HasZ = hasZ;
+		HasM = hasM;
 		Grid = new GridIndex();
 		Extent = new Envelope();
 	}

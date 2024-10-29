@@ -33,7 +33,7 @@ public class WKTWriter : IDisposable
 	public bool CurrentHasM { get; private set; }
 	public bool CurrentHasID { get; private set; }
 
-	// Examples (from postgis.net):
+	// Examples (from PostGIS.net):
 	// POINT(0 0)
 	// POINT Z (0 0 0)
 	// POINT ZM (0 0 0 0)
@@ -77,6 +77,11 @@ public class WKTWriter : IDisposable
 		BeginShape(State.MultiPolygon, hasZ, hasM, hasID);
 	}
 
+	/// <summary>
+	/// Start a new part in the current shape, which must be a multipart
+	/// shape. For a MultiPolygon, this method starts a new inner ring;
+	/// use <see cref="NewPolygon"/> to start a new outer ring.
+	/// </summary>
 	public void NewPart()
 	{
 		if (_state == State.Initial)
@@ -96,6 +101,15 @@ public class WKTWriter : IDisposable
 		_vertexIndex = 0;
 	}
 
+	/// <summary>
+	/// Start a new polygon in the current shape, which must be a MultiPolygon
+	/// </summary>
+	/// <remarks>
+	/// A WKT Polygon can have one outer (shell) ring and any number of inner
+	/// (hole) rings; a MultiPolygon can have any number of Polygons.
+	/// Esri Polygons are inherently "multi" (can have any number of outer
+	/// rings) and whether a ring is outer or inner is not explicitly stored.
+	/// </remarks>
 	public void NewPolygon()
 	{
 		if (_state != State.MultiPolygon)

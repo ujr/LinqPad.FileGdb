@@ -33,7 +33,7 @@ namespace FileGDB.Core.Test
 		}
 
 		[Fact]
-		public async void CanOpenFileGDB()
+		public void CanOpenFileGDB()
 		{
 			var gdbPath = GetTempDataPath("Test1.gdb");
 
@@ -41,7 +41,7 @@ namespace FileGDB.Core.Test
 
 			Assert.NotNull(gdb);
 			Assert.Equal(gdbPath, gdb.FolderPath);
-			var tableNames = gdb.TableNames.ToArray();
+			var tableNames = gdb.Catalog.Select(e => e.Name).ToArray();
 			Assert.Contains("GDB_SystemCatalog", tableNames);
 			Assert.Contains("GDB_DBTune", tableNames);
 			Assert.Contains("GDB_SpatialRefs", tableNames);

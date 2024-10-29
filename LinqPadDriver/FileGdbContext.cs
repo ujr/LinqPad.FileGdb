@@ -47,7 +47,7 @@ public class FileGdbContext : IDisposable
 	public string FolderPath => _gdb.FolderPath;
 
 	[PublicAPI]
-	public IEnumerable<string> TableNames => _gdb.TableNames;
+	public IEnumerable<Core.FileGDB.CatalogEntry> Catalog => _gdb.Catalog;
 
 	[PublicAPI]
 	public SystemTables GDB { get; }
@@ -175,7 +175,7 @@ public class FileGdbContext : IDisposable
 		}
 
 		[PublicAPI] public int FieldCount => _table.FieldCount;
-		[PublicAPI] public int RowCount => _table.RowCount;
+		[PublicAPI] public long RowCount => _table.RowCount;
 		[PublicAPI] public GeometryType GeometryType => _table.GeometryType;
 		[PublicAPI] public bool HasZ => _table.HasZ;
 		[PublicAPI] public bool HasM => _table.HasM;

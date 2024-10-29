@@ -129,7 +129,7 @@ public class FileGdbDriver : DynamicDataContextDriver
 	{
 		if (objectToWrite is Shape shape)
 		{
-			objectToWrite = ShapeProxy.Get(shape);
+			objectToWrite = ShapeProxy.Get(shape)!;
 		}
 		base.PreprocessObjectToWrite(ref objectToWrite, info);
 	}
@@ -275,6 +275,8 @@ public class FileGdbDriver : DynamicDataContextDriver
 		IConnectionInfo cxInfo, AssemblyName assemblyToBuild,
 		ref string nameSpace, ref string typeName)
 	{
+		Debugger.Launch();
+
 		var gdbFolderPath = cxInfo.GetGdbFolderPath();
 		var gdb = gdbFolderPath is null ? null : Core.FileGDB.Open(gdbFolderPath);
 
@@ -298,8 +300,6 @@ public class FileGdbDriver : DynamicDataContextDriver
 			Children = GetTableItems(gdb, name => !systemTables.Contains(name)),
 			ToolTipText = "User-defined tables (all but system tables)"
 		};
-
-		Debugger.Launch();
 
 //		string source = @$"
 //using System;
@@ -412,7 +412,8 @@ public class $$TYPENAME$$
   }
 
   public string FolderPath => _gdb.FolderPath;
-  public IEnumerable<string> TableNames => _gdb.TableNames;
+  //public IEnumerable<string> TableNames => _gdb.TableNames;
+  public IEnumerable<FileGDB.Core.FileGDB.CatalogEntry> Catalog => _gdb.Catalog;
   public SystemTables GDB { get; }
   public UserTables Tables { get; }
 
@@ -466,7 +467,7 @@ public class $$TYPENAME$$
     }
 
     public int FieldCount => Table.FieldCount;
-    public int RowCount => Table.RowCount;
+    public long RowCount => Table.RowCount;
     public FileGDB.Core.GeometryType GeometryType => Table.GeometryType;
     public bool HasZ => Table.HasZ;
     public bool HasM => Table.HasM;
@@ -522,8 +523,9 @@ public class $$TABLENAME$$Table : TableBase, IEnumerable<$$TABLENAME$$Table.Row>
 		var userTableProps = new StringBuilder();
 		var tableClasses = new StringBuilder();
 
-		foreach (var tableName in gdb.TableNames)
+		foreach (var entry in gdb.Catalog)
 		{
+			var tableName = entry.Name;
 			var tableClassName = MakeIdentifier(tableName);
 
 			if (tableName.StartsWith("GDB_"))
@@ -562,7 +564,7 @@ public class $$TABLENAME$$Table : TableBase, IEnumerable<$$TABLENAME$$Table.Row>
 					.Replace("$$PERFIELDPROPERTIES$$", fieldProperties.ToString());
 				tableClasses.AppendLine(perTableCode);
 			}
-			catch (IOException ex) // TODO better exception: want to catch OpenTable errors only
+			catch (IOException ex)
 			{
 				// Could not open table: assume it has no fields and generate
 				// code accordingly; the error will pop up again when enumerated
@@ -724,9 +726,9 @@ public class $$TABLENAME$$Table : TableBase, IEnumerable<$$TABLENAME$$Table.Row>
 			return new List<ExplorerItem>(0);
 		}
 
-		return gdb.TableNames
-			.Where(tableName => filter(tableName))
-			.Select(tableName => CreateTableItem(gdb, tableName))
+		return gdb.Catalog
+			.Where(entry => filter(entry.Name))
+			.Select(entry=> CreateTableItem(gdb, entry.Name))
 			.ToList();
 	}
 
@@ -736,12 +738,14 @@ public class $$TABLENAME$$Table : TableBase, IEnumerable<$$TABLENAME$$Table.Row>
 		{
 			using var table = gdb.OpenTable(tableName);
 
-			return new ExplorerItem(tableName, ExplorerItemKind.QueryableObject, ExplorerIcon.Table)
+			var itemName = GetTableExplorerName(tableName, table);
+
+			return new ExplorerItem(itemName, ExplorerItemKind.QueryableObject, ExplorerIcon.Table)
 			{
 				IsEnumerable = true,
 				//DragText = $"{nameof(FileGdbContext.Table)}[{Utils.FormatString(tableName)}]",
 				DragText = $"Tables.{tableName}",
-				ToolTipText = $"Table {tableName}, {table.RowCount} #rows, {table.MaxObjectID} max OID",
+				ToolTipText = $"{table.BaseName}, v{table.Version}, {table.RowCount} #rows, {table.MaxObjectID} max OID",
 				Children = CreateColumnItems(table)
 			};
 		}
@@ -758,6 +762,31 @@ public class $$TABLENAME$$Table : TableBase, IEnumerable<$$TABLENAME$$Table.Row>
 				}
 			};
 		}
+	}
+
+	private static string GetTableExplorerName(string tableName, Table table)
+	{
+		if (tableName is null)
+			throw new ArgumentNullException(nameof(tableName));
+		if (table is null)
+			throw new ArgumentNullException(nameof(table));
+
+		var sb = new StringBuilder(tableName);
+
+		if (table.GeometryType != GeometryType.Null)
+		{
+			sb.Append(" (");
+			sb.Append(table.GeometryType);
+			if (table.HasZ || table.HasM)
+			{
+				sb.Append(' ');
+				if (table.HasZ) sb.Append('Z');
+				if (table.HasM) sb.Append('M');
+			}
+			sb.Append(')');
+		}
+
+		return sb.ToString();
 	}
 
 	private static List<ExplorerItem> CreateColumnItems(Table table)

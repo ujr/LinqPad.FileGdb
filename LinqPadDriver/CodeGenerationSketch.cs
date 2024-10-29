@@ -3,6 +3,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using FileGDB.Core;
 using FileGDB.LinqPadDriver;
 
@@ -24,7 +25,7 @@ public class TYPENAME
 	}
 
 	public string FolderPath => _gdb.FolderPath;
-	public IEnumerable<string> TableNames => _gdb.TableNames;
+	public IEnumerable<FileGDB.Core.FileGDB.CatalogEntry> Catalog => _gdb.Catalog;
 	public SystemTables GDB { get; }
 	public UserTables Tables { get; }
 
@@ -95,7 +96,7 @@ public class TYPENAME
 		}
 
 		public int FieldCount => Table.FieldCount;
-		public int RowCount => Table.RowCount;
+		public long RowCount => Table.RowCount;
 		public FileGDB.Core.GeometryType GeometryType => Table.GeometryType;
 		public bool HasZ => Table.HasZ;
 		public bool HasM => Table.HasM;
