@@ -17,6 +17,7 @@
 		<FileVersion>0.1.0.0</FileVersion>
 		<!-- Title, Product, Description, Company, Copyright, PackageReadmeFile -->
 		<!-- About README in NuGet: https://devblogs.microsoft.com/nuget/add-a-readme-to-your-nuget-package/ -->
+    <PackageReadmeFile>README.md</PackageReadmeFile>
 	</PropertyGroup>
 
   <ItemGroup>
@@ -25,6 +26,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\FileGDB.Core\FileGDB.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
   </ItemGroup>
 
 	<Target Name="PostBuild1" AfterTargets="PostBuildEvent">
