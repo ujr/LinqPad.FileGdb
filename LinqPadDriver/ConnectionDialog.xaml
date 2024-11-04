@@ -19,7 +19,10 @@
 			<Label Padding="0,0,0,2">File Geodatabase (.gdb folder path):</Label>
 		</DockPanel>
 		<TextBox Padding="2" Text="{Binding FolderPath}" />
-		<DockPanel LastChildFill="False" Margin="0,15,0,0">
+		<CheckBox IsChecked="{Binding DebugMode}"
+				  ToolTip="Call System.Diagnostics.Debugger.Launch() before creating data context"
+                  Margin="0,6,0,0" VerticalAlignment="Center">Enable Debugger</CheckBox>
+		<DockPanel LastChildFill="False" Margin="0,3,0,0">
 			<CheckBox IsChecked="{Binding ConnectionInfo.Persist}" VerticalAlignment="Center">Remember this connection</CheckBox>
 			<Button DockPanel.Dock="Right" Content="Cancel" Margin="6,0,0,0" Padding="10,3" MinWidth="60" IsCancel="True" TabIndex="2" />
 			<Button DockPanel.Dock="Right" Content="OK" Margin="6,0,0,0" Padding="10,3" MinWidth="60" IsDefault="True" TabIndex="1" Click="btnOK_Click" />

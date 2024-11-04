@@ -8,12 +8,18 @@ namespace FileGDB.Core;
 
 // Flat list of tables (.gdbtable files)
 // First such table contains catalog (list of tables)
+// 3 known versions: 9.x (very old), 10.x (current), 10.x with 64bit OIDs (since Pro 3.2)
 
 public sealed class FileGDB : IDisposable
 {
 	private readonly object _syncLock = new();
 	private readonly IList<Table> _openTables;
 	private IReadOnlyList<CatalogEntry>? _catalog;
+
+	static FileGDB()
+	{
+		SystemTableDescriptions = GetSystemTableDescriptions();
+	}
 
 	private FileGDB(string gdbFolderPath)
 	{
@@ -29,11 +35,12 @@ public sealed class FileGDB : IDisposable
 		if (gdbFolderPath is null)
 			throw new ArgumentNullException(nameof(gdbFolderPath));
 
-		Debugger.Launch(); // NOT for production
 		var gdb = new FileGDB(gdbFolderPath);
 		gdb.LoadCatalog();
 		return gdb;
 	}
+
+	public static IReadOnlyDictionary<string, string> SystemTableDescriptions { get; }
 
 	public void Dispose()
 	{
@@ -69,7 +76,7 @@ public sealed class FileGDB : IDisposable
 	public Table OpenTable(string tableName)
 	{
 		var entry = GetCatalogEntry(tableName);
-		if (entry.Missing)
+		if (entry.ID <= 0)
 			throw Error($"No such table: {tableName}");
 		return OpenTable(entry.ID);
 	}
@@ -84,7 +91,8 @@ public sealed class FileGDB : IDisposable
 
 		using (var table = Table.Open(baseName, FolderPath))
 		{
-			for (int oid = 1; oid <= table.MaxObjectID; oid++)
+			var limit = (int) Math.Min(int.MaxValue, table.MaxObjectID);
+			for (int oid = 1; oid <= limit; oid++)
 			{
 				var row = table.ReadRow(oid);
 				if (row is null) continue;
@@ -105,7 +113,7 @@ public sealed class FileGDB : IDisposable
 
 		var entry = catalog.FirstOrDefault(entry => entry.Name == tableName);
 
-		if (entry.Missing)
+		if (entry.ID <= 0)
 		{
 			const StringComparison ignoreCase = StringComparison.OrdinalIgnoreCase;
 			entry = catalog.FirstOrDefault(e => string.Equals(e.Name, tableName, ignoreCase));
@@ -143,6 +151,27 @@ public sealed class FileGDB : IDisposable
 		return new FileGDBException(message ?? "File GDB error");
 	}
 
+	private static IReadOnlyDictionary<string, string> GetSystemTableDescriptions()
+	{
+		var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+		{
+			{ "GDB_SystemCatalog", "Catalog system table (list of all tables)" },
+			{ "GDB_DBTune", "DBTune system table (config keyword parameters)" },
+			{ "GDB_SpatialRefs", "Spatial references used by tables in this File GDB" },
+			{ "GDB_Items", "The GDB_Items system table" },
+			{ "GDB_ItemTypes", "The GDB_ItemTypes system table" },
+			{ "GDB_ItemRelationships", "The GDB_ItemRelationships system table" },
+			{ "GDB_ItemRelationshipTypes", "The GDB_ItemRelationshipTypes system table" },
+			{ "GDB_ReplicaLog", "The ReplicaLog system table (may not exist)" },
+			{ "GDB_EditingTemplates", "new with Pro 3.2" },
+			{ "GDB_EditingTemplateRelationships", "new with Pro 3.2" }
+		};
+
+		// TODO Version 9.2 File GDBs had many more system tables
+
+		return new ReadOnlyDictionary<string, string>(result);
+	}
+
 	#endregion
 
 	public readonly struct CatalogEntry
@@ -158,7 +187,7 @@ public sealed class FileGDB : IDisposable
 			Format = format;
 		}
 
-		public bool Missing => ID <= 0 || Name == null;
+		//public bool Missing => ID <= 0 || Name == null;
 
 		public override string ToString()
 		{
@@ -194,8 +223,9 @@ public sealed class Table : IDisposable
 	public bool HasM { get; private set; }
 	public bool UseUtf8 { get; private set; }
 	public IReadOnlyList<FieldInfo> Fields { get; private set; }
-	//public int MaxEntrySize { get; private set; }
-	public int MaxObjectID { get; private set; } // TODO unsure (experiment with deleting rows)
+	public int MaxEntrySize { get; private set; } // max(row sizes and field description section)
+	public long MaxObjectID { get; private set; } // TODO unsure (experiment with deleting rows)
+	public long FileSizeBytes { get; private set; }
 	public IReadOnlyList<IndexInfo> Indexes => _indexes ??= LoadIndexes();
 
 	private Table(string baseName, string folderPath)
@@ -319,7 +349,7 @@ public sealed class Table : IDisposable
 	//	return buffer;
 	//}
 
-	public object?[]? ReadRow(int oid, object?[]? values = null)
+	public object?[]? ReadRow(long oid, object?[]? values = null)
 	{
 		if (_dataReader is null)
 			throw new ObjectDisposedException(GetType().Name);
@@ -382,7 +412,7 @@ public sealed class Table : IDisposable
 					break;
 				case FieldType.Raster:
 					// depends on RasterType in field definition
-					throw new NotImplementedException();
+					throw new NotImplementedException("Raster fields not yet implemented");
 				case FieldType.GUID:
 				case FieldType.GlobalID:
 					values[i] = ReadGuidField(_dataReader);
@@ -427,7 +457,8 @@ public sealed class Table : IDisposable
 			case FieldType.DateTime:
 				return typeof(DateTime?);
 			case FieldType.ObjectID:
-				return typeof(int);
+				// was 32bit until about year 2023; can be 64bit since ArcGIS Pro 3.2
+				return typeof(long);
 			case FieldType.Geometry:
 				return typeof(Shape);
 			case FieldType.Blob:
@@ -448,7 +479,7 @@ public sealed class Table : IDisposable
 		}
 	}
 
-	private long GetRowOffset(int oid)
+	private long GetRowOffset(long oid)
 	{
 		if (_indexReader is null)
 			throw new ObjectDisposedException(GetType().Name);
@@ -476,34 +507,37 @@ public sealed class Table : IDisposable
 		       fx.seek(16 + size_tablx_offsets * iCorrectedRow)
 		   else:
 		       fx.seek(16 + fid * size_tablx_offsets, 0)
-
-		   if size_tablx_offsets == 4:
-		       feature_offset = read_uint32(fx)
-		   elif size_tablx_offsets == 5:
-		       feature_offset = read_uint40(fx)
-		   elif size_tablx_offsets == 6:
-		       feature_offset = read_uint48(fx)
-		   else:
-		       assert False
 		 */
 
 		if (_blockMap != null)
 		{
-			int iBlock = oid / 1024;
-			if (!_blockMap[iBlock])
+			long blockNum = oid / 1024;
+			if (blockNum > int.MaxValue)
+				throw Error($"OID {oid} is too big for this implementation");
+
+			if (!_blockMap[(int) blockNum])
+			{
 				return -1; // no such oid
+			}
 
-			int nCountBlocksBefore = 0; // TODO optimize for sequential reading
-			for (int i = 0; i < iBlock; i++)
-				nCountBlocksBefore += _blockMap[i] ? 1 : 0;
+			int blocksBefore = 0; // TODO optimize for sequential reading
+			for (int i = 0; i < blockNum; i++)
+			{
+				blocksBefore += _blockMap[i] ? 1 : 0;
+			}
 
-			var iCorrectedRow = nCountBlocksBefore * 1024 + oid % 1024;
+			var correctedRow = blocksBefore * 1024 + oid % 1024;
 
-			_indexReader.Seek(16 + OffsetSize * iCorrectedRow);
+			_indexReader.Seek(16 + OffsetSize * correctedRow);
 		}
 		else
 		{
-			_indexReader.Seek(16 + oid * OffsetSize);
+			long offset = 16 + oid * OffsetSize;
+			if (offset >= _indexReader.Length)
+			{
+				return -1; // no such oid
+			}
+			_indexReader.Seek(offset);
 		}
 
 		long result = OffsetSize switch
@@ -614,11 +648,33 @@ public sealed class Table : IDisposable
 		   nfeaturesx = read_uint32(fx)
 		   size_tablx_offsets = read_uint32(fx)
 		 */
+
 		// assume reader is positioned at start of header
 		var formatVersion = indexReader.ReadInt32(); // 3 for 32-bit OIDs, 4 for 64-bit OIDs
+
+		switch (formatVersion)
+		{
+			case 3:
+				ReadIndexHeader3(indexReader);
+				break;
+			case 4:
+				ReadIndexHeader4(indexReader);
+				break;
+			default:
+				throw Error($"Version {formatVersion} of .gdbtablx is not supported; expect 3 or 4");
+		}
+	}
+
+	private void ReadIndexHeader3(DataReader indexReader)
+	{
+		// assume reader positioned after version field
+
 		var n1024Blocks = indexReader.ReadInt32(); // TODO rename num1KBlocks
 		var numRows = indexReader.ReadInt32(); // including deleted rows!
+
 		OffsetSize = indexReader.ReadInt32(); // 4, 5, or 6 (bytes per offset)
+		if (OffsetSize is not 4 and not 5 and not 6)
+			throw Error($"Offset size {OffsetSize} is out of range; expect 4 or 5 or 6 (bytes per offset)");
 
 		MaxObjectID = numRows;
 
@@ -626,9 +682,6 @@ public sealed class Table : IDisposable
 			Debug.Assert(numRows == 0);
 		else
 			Debug.Assert(numRows > 0);
-
-		if (OffsetSize is not 4 and not 5 and not 6)
-			throw Error($"Offset size {OffsetSize} is out of range; expect 4 or 5 or 6 (bytes per offset)");
 
 		if (n1024Blocks > 0)
 		{
@@ -665,12 +718,6 @@ public sealed class Table : IDisposable
 		}
 
 		/*
-		   def TEST_BIT(ar, bit):
-		       return 1 if (ar[(bit) // 8] & (1 << ((bit) % 8))) else 0
-		   
-		   def BIT_ARRAY_SIZE_IN_BYTES(bitsize):
-		       return (((bitsize)+7)//8)
-		   
 		   pabyTablXBlockMap = None
 		   if n1024Blocks != 0:
 		       fx.seek(size_tablx_offsets * 1024 * n1024Blocks + 16, 0)
@@ -695,6 +742,37 @@ public sealed class Table : IDisposable
 		 */
 	}
 
+	private void ReadIndexHeader4(DataReader indexReader)
+	{
+		// assume reader positioned after version field
+
+		var n1024Blocks = indexReader.ReadInt32(); // TODO rename num1KBlocks
+		var unknown = indexReader.ReadInt32(); // always 0? MSB of previous field?
+
+		OffsetSize = indexReader.ReadInt32(); // 4, 5, or 6 (bytes per offset)
+		if (OffsetSize is not 4 and not 5 and not 6)
+			throw Error($"Offset size {OffsetSize} is out of range; expect 4 or 5 or 6 (bytes per offset)");
+
+		if (n1024Blocks > 0)
+		{
+			// Seek to trailer section:
+			indexReader.Seek(16 + 1024 * n1024Blocks * OffsetSize);
+
+			var numRows = indexReader.ReadInt64(); // including deleted rows!
+
+			MaxObjectID = numRows;
+
+			var sectionBytes = indexReader.ReadInt32(); // 0 for non-sparse files
+			if (sectionBytes > 0)
+				throw Error("Unsupported v4 (Pro 3.2) .gdbtablx file");
+			// Cf with_holes files at https://github.com/qgis/QGIS/issues/57471
+		}
+		else
+		{
+			_blockMap = null;
+		}
+	}
+
 	private void ReadDataHeader(DataReader reader)
 	{
 		// assume reader is positioned at start of header
@@ -702,45 +780,41 @@ public sealed class Table : IDisposable
 		if (formatVersion == 3)
 		{
 			RowCount = reader.ReadInt32(); // actual (non-deleted) rows
-			var maxEntrySize = reader.ReadInt32();
-			var magic2 = reader.ReadInt32();
+			MaxEntrySize = reader.ReadInt32();
+			var magic2 = reader.ReadInt32(); // always 5 (?)
 			var magic3 = reader.ReadBytes(4);
 			var magic4 = reader.ReadBytes(4);
 		}
 		else if (formatVersion == 4)
 		{
 			var magic1 = reader.ReadInt32(); // 1 if some features deleted, otherwise 0 (?)
-			var maxEntrySize = reader.ReadInt32();
-			var magic2 = reader.ReadInt32();
+			MaxEntrySize = reader.ReadInt32();
+			var magic2 = reader.ReadInt32(); // always 5 (?)
 			RowCount = reader.ReadInt64();
 		}
-		//RowCount = reader.ReadInt32(); // actual (non-deleted) rows
-		//var maxEntrySize = reader.ReadInt32();
-		//var magic2 = reader.ReadInt32();
-		//var magic3 = reader.ReadBytes(4);
-		//var magic4 = reader.ReadBytes(4);
-		var fileBytes = reader.ReadInt64();
-		var fieldsOffset = reader.ReadInt64();
 
+		FileSizeBytes = reader.ReadInt64();
+
+		var fieldsOffset = reader.ReadInt64();
+		reader.Seek(fieldsOffset);
+
+		ReadFieldDescriptions(reader);
+	}
+
+	private void ReadFieldDescriptions(DataReader reader)
+	{
+		// assume reader is positioned at start of field descriptions section
 		// Fixed part of fields section:
 		var headerBytes = reader.ReadInt32(); // excluding this field
-		Version = reader.ReadInt32(); // 3 for FGDB at 9.x, 4 for FGDB at 10.x
+		Version = reader.ReadInt32(); // 3 for FGDB at 9.x, 4 for FGDB at 10.x, 6 for FGDB using Pro 3.2 features (64bit OID, new field types)
 		var flags = reader.ReadUInt32(); // see decoding below
-		FieldCount = reader.ReadInt16(); // including the implicit OBJECTID field! // TODO really short (not int)?
+		FieldCount = reader.ReadInt16(); // including the implicit OBJECTID field!
 
 		// Decode known flag bits:
 		UseUtf8 = (flags & (1 << 8)) != 0;
 		GeometryType = (GeometryType)(flags & 255);
 		HasZ = (flags & (1 << 31)) != 0;
 		HasM = (flags & (1 << 30)) != 0;
-
-		if (Version != 4)
-		{
-			var info = Version == 3 ? "a 9.x" : "not a 10.x";
-			throw Error($"This is {info} GDB table, which is not supported. " +
-			            $"We found: Version={Version}, RowCount={RowCount}, FieldCount={FieldCount}, " +
-			            $"UseUTF8={UseUtf8}, GeometryType={GeometryType}, HasZ={HasZ}, HasM={HasM}");
-		}
 
 		// Field descriptions:
 		var fields = new List<FieldInfo>(Math.Max(0, FieldCount));
@@ -911,7 +985,46 @@ public sealed class Table : IDisposable
 				break;
 
 			case FieldType.Raster:
-				throw new NotImplementedException();
+				_ = reader.ReadByte();
+				flag = reader.ReadByte();
+				field.Nullable = (flag & 1) != 0;
+				var nbcar = reader.ReadByte();
+				var rasterColumn = reader.ReadUtf16(nbcar);
+				wktLen = reader.ReadInt16();
+				wkt = reader.ReadUtf16(wktLen / 2); // in chars
+				var magic3 = reader.ReadByte();
+				if (magic3 > 0)
+				{
+					bool rasterHasZ = false;
+					bool rasterHasM = false;
+					if (magic3 == 5) rasterHasZ = true;
+					if (magic3 == 7) rasterHasM = rasterHasZ = true;
+					var xOrig = reader.ReadDouble();
+					var yOrig = reader.ReadDouble();
+					var xyScale = reader.ReadDouble();
+					if (rasterHasM)
+					{
+						var mOrig = reader.ReadDouble();
+						var mScale = reader.ReadDouble();
+					}
+					if (rasterHasZ)
+					{
+						var zOrig = reader.ReadDouble();
+						var zScale = reader.ReadDouble();
+					}
+					var xyTolerance = reader.ReadDouble();
+					if (rasterHasM)
+					{
+						var mTolerance = reader.ReadDouble();
+					}
+					if (rasterHasZ)
+					{
+						var zTolerance = reader.ReadDouble();
+					}
+				}
+				field.RasterType = reader.ReadByte();
+				// 0 = external raster, 1 = managed raster, 2 = inline binary raster
+				break;
 			/*
 		       elif type == TYPE_RASTER:
 			       print('unknown_role = %d' % read_uint8(f))
@@ -1068,7 +1181,7 @@ public abstract class RowsResult //: IEnumerable<int>, IEnumerator<int>
 
 	#endregion
 
-	public abstract int OID { get; }
+	public abstract long OID { get; }
 
 	public abstract byte[]? Shape { get; } // null if no shape
 
@@ -1077,10 +1190,10 @@ public abstract class RowsResult //: IEnumerable<int>, IEnumerator<int>
 
 public class TableScanResult : RowsResult
 {
-	private int _oid;
+	private long _oid;
 	private readonly FieldInfo[] _fields;
 	private readonly object?[] _values;
-	private readonly int _maxOid;
+	private readonly long _maxOid;
 	private readonly Table _table;
 	private readonly IDictionary<string, int> _fieldIndices;
 	private readonly int _shapeFieldIndex;
@@ -1110,7 +1223,7 @@ public class TableScanResult : RowsResult
 		return false; // exhausted
 	}
 
-	public override int OID => _oid;
+	public override long OID => _oid;
 
 	public override byte[]? Shape => GetShape();
 

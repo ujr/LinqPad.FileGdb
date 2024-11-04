@@ -30,6 +30,25 @@ public static class Utils
 		driverData.SetElementValue(Constants.DriverDataFolderPath, value?.Trim() ?? string.Empty);
 	}
 
+	public static bool GetDebugMode(this IConnectionInfo cxInfo)
+	{
+		if (cxInfo is null)
+			throw new ArgumentNullException(nameof(cxInfo));
+		var driverData = cxInfo.DriverData;
+		var value = (bool?)driverData?.Element(Constants.DriverDataDebugMode);
+		return value ?? false;
+	}
+
+	public static void SetDebugMode(this IConnectionInfo cxInfo, bool enable)
+	{
+		if (cxInfo is null)
+			throw new ArgumentNullException(nameof(cxInfo));
+		var driverData = cxInfo.DriverData;
+		if (driverData is null)
+			throw new InvalidOperationException($"{nameof(cxInfo.DriverData)} is null");
+		driverData.SetElementValue(Constants.DriverDataDebugMode, enable);
+	}
+
 	public static string FormatString(string text)
 	{
 		var sb = new StringBuilder();

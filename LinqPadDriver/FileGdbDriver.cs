@@ -1,21 +1,15 @@
 using System;
-using System.CodeDom;
-using System.Collections;
 using System.Collections.Generic;
-using System.Data;
 using System.Diagnostics;
-using System.Dynamic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
-using System.Xml;
 using FileGDB.Core;
 using JetBrains.Annotations;
 using LINQPad;
 using LINQPad.Extensibility.DataContext;
 using LinqPadDriver;
-using static FileGDB.LinqPadDriver.FileGdbContext;
 using FieldInfo = FileGDB.Core.FieldInfo;
 
 namespace FileGDB.LinqPadDriver;
@@ -275,7 +269,12 @@ public class FileGdbDriver : DynamicDataContextDriver
 		IConnectionInfo cxInfo, AssemblyName assemblyToBuild,
 		ref string nameSpace, ref string typeName)
 	{
-		Debugger.Launch();
+		bool debugMode = cxInfo.GetDebugMode();
+
+		if (debugMode)
+		{
+			Debugger.Launch();
+		}
 
 		var gdbFolderPath = cxInfo.GetGdbFolderPath();
 		var gdb = gdbFolderPath is null ? null : Core.FileGDB.Open(gdbFolderPath);
@@ -289,7 +288,7 @@ public class FileGdbDriver : DynamicDataContextDriver
 
 		var systemItem = new ExplorerItem("System", ExplorerItemKind.Schema, ExplorerIcon.Schema)
 		{
-			Children = GetSystemTableItems(),
+			Children = GetSystemTableItems(gdb),
 			ToolTipText = "Geodatabase System Tables"
 		};
 
@@ -301,52 +300,30 @@ public class FileGdbDriver : DynamicDataContextDriver
 			ToolTipText = "User-defined tables (all but system tables)"
 		};
 
-//		string source = @$"
-//using System;
-//using System.Collections.Generic;
-//using System.Linq;
-//using FileGDB.Core;
-//using FileGDB.LinqPadDriver;
-
-//namespace {nameSpace};
-
-//// User's queries subclass this class and
-//// thus have easy access to all members here:
-//public class {typeName}
-//{{
-//    private readonly FileGDB.Core.FileGDB _gdb;
-
-//    public {typeName}(string folderPath)
-//    {{
-//        if (string.IsNullOrEmpty(folderPath))
-//            throw new ArgumentNullException(nameof(folderPath));
-
-//		_gdb = FileGDB.Core.FileGDB.Open(folderPath);
-//    }}
-
-//    //public string FolderPath => @""{gdbFolderPath}""; // TODO ESCAPE
-//    public string FolderPath => _gdb.FolderPath;
-//    public IEnumerable<string> TableNames => _gdb.TableNames;
-//}}";
-
 		var source = MakeContextSourceCode(nameSpace, typeName, gdb);
 
 		Compile(source, assemblyToBuild.CodeBase, cxInfo);
 
-		return new List<ExplorerItem>
+		var items = new List<ExplorerItem>
 		{
 			folderPathItem,
 			systemItem,
-			tablesItem,
-			new($"NameSpace={nameSpace}", ExplorerItemKind.Schema, ExplorerIcon.Box),
-			new($"TypeName={typeName}", ExplorerItemKind.Schema, ExplorerIcon.Box),
-			new("SourceCode", ExplorerItemKind.Property, ExplorerIcon.Box)
+			tablesItem
+		};
+
+		if (debugMode)
+		{
+			items.Add(new($"NameSpace={nameSpace}", ExplorerItemKind.Schema, ExplorerIcon.Box));
+			items.Add(new($"TypeName={typeName}", ExplorerItemKind.Schema, ExplorerIcon.Box));
+			items.Add(new("SourceCode", ExplorerItemKind.Property, ExplorerIcon.Box)
 			{
 				IsEnumerable = false,
 				DragText = source,
 				ToolTipText = "generated source code for data context"
-			}
-		};
+			});
+		}
+
+		return items;
 	}
 
 	private static void Compile(string cSharpSourceCode, string outputFile, IConnectionInfo cxInfo)
@@ -417,6 +394,16 @@ public class $$TYPENAME$$
   public SystemTables GDB { get; }
   public UserTables Tables { get; }
 
+  public FileGDB.Core.Table OpenTable(int id)
+  {
+    return _gdb.OpenTable(id);
+  }
+
+  public FileGDB.Core.Table OpenTable(string name)
+  {
+    return _gdb.OpenTable(name);
+  }
+
   public class SystemTables : TableContainer
   {
     public SystemTables(FileGDB.Core.FileGDB gdb) : base(gdb) {}
@@ -473,7 +460,8 @@ public class $$TYPENAME$$
     public bool HasM => Table.HasM;
     public int Version => Table.Version;
     public bool UseUtf8 => Table.UseUtf8;
-    public int MaxOID => Table.MaxObjectID;
+    public long MaxOID => Table.MaxObjectID;
+    public int MaxEntrySize => _table.MaxEntrySize;
     public IReadOnlyList<FileGDB.Core.FieldInfo> Fields => Table.Fields;
 
     protected FileGDB.Core.Table Table =>
@@ -528,7 +516,7 @@ public class $$TABLENAME$$Table : TableBase, IEnumerable<$$TABLENAME$$Table.Row>
 			var tableName = entry.Name;
 			var tableClassName = MakeIdentifier(tableName);
 
-			if (tableName.StartsWith("GDB_"))
+			if (tableName.StartsWith("GDB_", StringComparison.OrdinalIgnoreCase))
 			{
 				systemTableProps.Append($"public @{tableClassName}Table @{tableClassName} => ");
 				systemTableProps.AppendLine($"GetTable<@{tableClassName}Table>(\"{tableClassName}\");");
@@ -610,7 +598,7 @@ public class $$TABLENAME$$Table : TableBase, IEnumerable<$$TABLENAME$$Table.Row>
 			}
 		}
 
-		return name;
+		return sb.ToString();
 	}
 
 	private static string EscapeForString(string name)
@@ -684,38 +672,32 @@ public class $$TABLENAME$$Table : TableBase, IEnumerable<$$TABLENAME$$Table.Row>
 		return baseType != null;
 	}
 
-	private static List<ExplorerItem> GetSystemTableItems()
+	private static List<ExplorerItem> GetSystemTableItems(Core.FileGDB? gdb)
 	{
-		var list = new List<ExplorerItem>
+		if (gdb is null)
 		{
-			CreateSystemItem("GDB_SystemCatalog",
-				"Catalog system table (list of all tables)"),
-			CreateSystemItem("GDB_DBTune",
-				"DBTune system table (config keyword parameters)"),
-			CreateSystemItem("GDB_SpatialRefs",
-				"Spatial references used by tables in this File GDB"),
-			CreateSystemItem("GDB_Items",
-				"The GDB_Items system table"),
-			CreateSystemItem("GDB_ItemTypes",
-				"The GDB_ItemTypes system table"),
-			CreateSystemItem("GDB_ItemRelationships",
-				"The GDB_ItemRelationships system table"),
-			CreateSystemItem("GDB_ItemRelationshipTypes",
-				"The GDB_ItemRelationshipTypes system table"),
-			CreateSystemItem("GDB_ReplicaLog",
-				"The ReplicaLog system table (may not exist)")
-		};
+			return new List<ExplorerItem>(0);
+		}
+
+		// Tables whose names begin with "GDB_" (ignoring case) are considered system tables:
+		var systemEntries = gdb.Catalog
+			.Where(e => e.Name.StartsWith("GDB_", StringComparison.OrdinalIgnoreCase))
+			.OrderBy(e => e.ID);
+
+		var list = systemEntries.Select(CreateSystemItem).ToList();
 
 		return list;
 	}
 
-	private static ExplorerItem CreateSystemItem(string name, string toolTip)
+	private static ExplorerItem CreateSystemItem(Core.FileGDB.CatalogEntry entry)
 	{
-		return new ExplorerItem(name, ExplorerItemKind.QueryableObject, ExplorerIcon.Table)
+		var description = Core.FileGDB.SystemTableDescriptions.GetValueOrDefault(entry.Name);
+
+		return new ExplorerItem(entry.Name, ExplorerItemKind.QueryableObject, ExplorerIcon.Table)
 		{
 			IsEnumerable = true,
-			DragText = $"GDB.{name}",
-			ToolTipText = toolTip
+			DragText = $"GDB.{entry.Name}",
+			ToolTipText = description is null ? $"Table ID {entry.ID}" : $"Table ID {entry.ID}, {description}"
 		};
 	}
 

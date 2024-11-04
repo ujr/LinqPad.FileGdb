@@ -181,7 +181,8 @@ public class FileGdbContext : IDisposable
 		[PublicAPI] public bool HasM => _table.HasM;
 		[PublicAPI] public int Version => _table.Version;
 		[PublicAPI] public bool UseUtf8 => _table.UseUtf8;
-		[PublicAPI] public int MaxOID => _table.MaxObjectID;
+		[PublicAPI] public long MaxOID => _table.MaxObjectID;
+		[PublicAPI] public int MaxEntrySize => _table.MaxEntrySize;
 		[PublicAPI] public IReadOnlyList<FieldInfo> Fields => _table.Fields;
 
 		IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

@@ -29,6 +29,16 @@ public class TYPENAME
 	public SystemTables GDB { get; }
 	public UserTables Tables { get; }
 
+	public FileGDB.Core.Table OpenTable(int id)
+	{
+		return _gdb.OpenTable(id);
+	}
+
+	public FileGDB.Core.Table OpenTable(string name)
+	{
+		return _gdb.OpenTable(name);
+	}
+
 	public class SystemTables : TableContainer
 	{
 		public SystemTables(FileGDB.Core.FileGDB gdb) : base(gdb) {}
@@ -102,7 +112,8 @@ public class TYPENAME
 		public bool HasM => Table.HasM;
 		public int Version => Table.Version;
 		public bool UseUtf8 => Table.UseUtf8;
-		public int MaxOID => Table.MaxObjectID;
+		public long MaxOID => Table.MaxObjectID;
+		public int MaxEntrySize => Table.MaxEntrySize;
 		public IReadOnlyList<FileGDB.Core.FieldInfo> Fields => Table.Fields;
 
 		protected FileGDB.Core.Table Table =>

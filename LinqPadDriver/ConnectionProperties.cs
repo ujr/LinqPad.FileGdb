@@ -31,6 +31,19 @@ public class ConnectionProperties : INotifyPropertyChanged
 		}
 	}
 
+	public bool DebugMode
+	{
+		get => ConnectionInfo.GetDebugMode();
+		set
+		{
+			if (value != DebugMode)
+			{
+				ConnectionInfo.SetDebugMode(value);
+				OnPropertyChanged();
+			}
+		}
+	}
+
 	#region INotifyPropertyChanged
 
 	public event PropertyChangedEventHandler? PropertyChanged;

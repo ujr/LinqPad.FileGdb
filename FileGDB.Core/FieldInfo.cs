@@ -10,6 +10,7 @@ public class FieldInfo
 	// Precision and Scale are always zero for File GDBs
 	// Required? Editable? Domain? DomainFixed? DefaultValue?
 	public GeometryDef? GeometryDef { get; set; }
+	public int? RasterType { get; set; } // TODO eventually "RasterDef" à la GeometryDef
 
 	public FieldInfo(string name, string? alias, FieldType type)
 	{
