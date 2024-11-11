@@ -193,6 +193,80 @@ namespace FileGDB.Core.Test
 			}
 		}
 
+		[Fact]
+		public void CanReadPoints1()
+		{
+			var gdbPath = GetTempDataPath("Test1.gdb");
+			using var gdb = FileGDB.Open(gdbPath);
+			using var table = gdb.OpenTable("Point1");
+
+			// This table has one row: Shape=Point, Code=1, Text="One", Size=12.3
+
+			var rows = table.Search(null, null, null);
+
+			Assert.True(rows.Step());
+
+			Assert.True(rows.HasShape);
+
+			var shapeBuffer = rows.Shape ?? throw new Exception("Shape is null");
+			Assert.Equal(GeometryType.Point, shapeBuffer.GeometryType);
+			Assert.False(shapeBuffer.HasZ);
+			Assert.False(shapeBuffer.HasM);
+			Assert.False(shapeBuffer.HasID);
+			Assert.Equal(1, shapeBuffer.NumParts);
+			Assert.Equal(1, shapeBuffer.NumPoints);
+
+			object? value = rows.GetValue("Code");
+			Assert.IsType<int>(value);
+			Assert.Equal(1, value);
+
+			value = rows.GetValue("Text");
+			Assert.IsType<string>(value);
+			Assert.Equal("One", value);
+
+			value = rows.GetValue("Size");
+			Assert.IsType<double>(value);
+			Assert.Equal(12.3, value);
+
+			value = rows.GetValue("SHAPE");
+			Assert.IsType<ShapeBuffer>(value);
+
+			Assert.Throws<FileGDBException>(() => rows.GetValue("NoSuchFieldHere"));
+
+			Assert.False(rows.Step()); // no more rows
+		}
+
+		[Fact]
+		public void CanReadTable1()
+		{
+			var gdbPath = GetTempDataPath("Test1.gdb");
+			using var gdb = FileGDB.Open(gdbPath);
+			using var table = gdb.OpenTable("Table1");
+
+			// This table has one row: Code=1, Text="One", Size=12.3
+
+			var rows = table.Search(null, null, null);
+
+			Assert.True(rows.Step());
+
+			Assert.False(rows.HasShape);
+			Assert.Throws<FileGDBException>(() => rows.GetValue("SHAPE"));
+
+			object? value = rows.GetValue("Code");
+			Assert.IsType<int>(value);
+			Assert.Equal(1, value);
+
+			value = rows.GetValue("Text");
+			Assert.IsType<string>(value);
+			Assert.Equal("One", value);
+
+			value = rows.GetValue("Size");
+			Assert.IsType<double>(value);
+			Assert.Equal(12.3, value);
+
+			Assert.False(rows.Step()); // no more rows
+		}
+
 		private string GetTempDataPath(string fileName)
 		{
 			return Path.Combine(_myTempPath, fileName);

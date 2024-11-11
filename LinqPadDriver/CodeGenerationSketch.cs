@@ -3,6 +3,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using FileGDB.Core;
 using FileGDB.LinqPadDriver;
@@ -12,16 +13,18 @@ namespace NAMESPACE;
 public class TYPENAME
 {
 	private readonly FileGDB.Core.FileGDB _gdb;
+	private readonly bool _debugMode;
 
-	public TYPENAME(string gdbFolderPath)
+	public TYPENAME(string gdbFolderPath, bool debugMode)
 	{
 		if (string.IsNullOrEmpty(gdbFolderPath))
 			throw new ArgumentNullException(nameof(gdbFolderPath));
 
 		_gdb = FileGDB.Core.FileGDB.Open(gdbFolderPath);
+		_debugMode = debugMode;
 
-		GDB = new SystemTables(_gdb);
-		Tables = new UserTables(_gdb);
+		GDB = new SystemTables(_gdb, debugMode);
+		Tables = new UserTables(_gdb, debugMode);
 	}
 
 	public string FolderPath => _gdb.FolderPath;
@@ -31,24 +34,34 @@ public class TYPENAME
 
 	public FileGDB.Core.Table OpenTable(int id)
 	{
+		if (_debugMode)
+		{
+			Debugger.Launch();
+		}
+
 		return _gdb.OpenTable(id);
 	}
 
 	public FileGDB.Core.Table OpenTable(string name)
 	{
+		if (_debugMode)
+		{
+			Debugger.Launch();
+		}
+
 		return _gdb.OpenTable(name);
 	}
 
 	public class SystemTables : TableContainer
 	{
-		public SystemTables(FileGDB.Core.FileGDB gdb) : base(gdb) {}
+		public SystemTables(FileGDB.Core.FileGDB gdb, bool debugMode) : base(gdb, debugMode) {}
 
 		public @FooTable @Foo => GetTable<@FooTable>("Foo");
 	}
 
 	public class UserTables : TableContainer
 	{
-		public UserTables(FileGDB.Core.FileGDB gdb) : base(gdb) {}
+		public UserTables(FileGDB.Core.FileGDB gdb, bool debugMode) : base(gdb, debugMode) {}
 
 		public @FooTable @Foo => GetTable<@FooTable>("Foo");
 	}
@@ -56,11 +69,13 @@ public class TYPENAME
 	public abstract class TableContainer
 	{
 		private readonly FileGDB.Core.FileGDB _gdb;
+		private readonly bool _debugMode;
 		private readonly IDictionary<string, TableBase> _cache;
 
-		protected TableContainer(FileGDB.Core.FileGDB gdb)
+		protected TableContainer(FileGDB.Core.FileGDB gdb, bool debugMode)
 		{
 			_gdb = gdb ?? throw new ArgumentNullException(nameof(gdb));
+			_debugMode = debugMode;
 			_cache = new Dictionary<string, TableBase>();
 		}
 
@@ -69,7 +84,7 @@ public class TYPENAME
 			if (!_cache.TryGetValue(tableName, out var table))
 			{
 				var inner = _gdb.OpenTable(tableName);
-				table = new T().SetTable(inner);
+				table = new T().SetTable(inner, _debugMode);
 				_cache.Add(tableName, table);
 			}
 			return (T)table;
@@ -98,10 +113,12 @@ public class TYPENAME
 	public abstract class TableBase
 	{
 		private FileGDB.Core.Table? _table;
+		protected bool DebugMode { get; private set; }
 
-		public TableBase SetTable(FileGDB.Core.Table table)
+		public TableBase SetTable(FileGDB.Core.Table table, bool debugMode)
 		{
 			_table = table ?? throw new ArgumentNullException(nameof(table));
+			DebugMode = debugMode;
 			return this;
 		}
 
@@ -126,6 +143,11 @@ public class TYPENAME
 
 		public IEnumerator<Row> GetEnumerator()
 		{
+			if (DebugMode)
+			{
+				Debugger.Launch();
+			}
+
 			var cursor = Table.Search(null, null, null);
 
 			while (cursor.Step())

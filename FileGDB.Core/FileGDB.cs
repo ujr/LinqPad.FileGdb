@@ -221,6 +221,7 @@ public sealed class Table : IDisposable
 	public GeometryType GeometryType { get; private set; }
 	public bool HasZ { get; private set; }
 	public bool HasM { get; private set; }
+	public bool HasID { get; private set; }
 	public bool UseUtf8 { get; private set; }
 	public IReadOnlyList<FieldInfo> Fields { get; private set; }
 	public int MaxEntrySize { get; private set; } // max(row sizes and field description section)
@@ -460,7 +461,7 @@ public sealed class Table : IDisposable
 				// was 32bit until about year 2023; can be 64bit since ArcGIS Pro 3.2
 				return typeof(long);
 			case FieldType.Geometry:
-				return typeof(Shape);
+				return typeof(ShapeBuffer);
 			case FieldType.Blob:
 				return typeof(byte[]);
 			case FieldType.Raster:
@@ -585,17 +586,23 @@ public sealed class Table : IDisposable
 		return new BitArray(bytes.ToArray());
 	}
 
-	private static Shape ReadGeometryBlob(DataReader reader, GeometryDef geomDef)
+	private static ShapeBuffer? ReadGeometryBlob(DataReader reader, GeometryDef geomDef)
 	{
 		// assume reader positioned at start of field data
 		var size = reader.ReadVarUInt();
 		if (size > int.MaxValue)
 			throw Error("Geometry field too large for this API");
 		var bytes = reader.ReadBytes((int)size);
-		//Debugger.Launch();
+
 		var r = new GeometryBlobReader(geomDef, bytes);
-		var shape = r.ReadShape();
-		return shape;
+		var shapeBuffer = r.ReadAsShapeBuffer();
+		if (!r.EntireBlobConsumed(out var bytesConsumed))
+			throw Error($"Geometry BLOB reader did not consume entire blob: " +
+			            $"consumed {bytesConsumed} of {bytes.Length} bytes in BLOB");
+		
+		return shapeBuffer;
+//		var shape = r.ReadShape();
+//		return shape;
 	}
 
 	private static byte[] ReadBlobField(DataReader reader)
@@ -641,13 +648,6 @@ public sealed class Table : IDisposable
 		// - Header (16 bytes)
 		// - Offsets (one entry per record)
 		// - Trailer (16 bytes + bitmap)
-
-		/*
-		   magic1 = read_uint32(fx)
-		   n1024Blocks = read_uint32(fx)
-		   nfeaturesx = read_uint32(fx)
-		   size_tablx_offsets = read_uint32(fx)
-		 */
 
 		// assume reader is positioned at start of header
 		var formatVersion = indexReader.ReadInt32(); // 3 for 32-bit OIDs, 4 for 64-bit OIDs
@@ -815,6 +815,7 @@ public sealed class Table : IDisposable
 		GeometryType = (GeometryType)(flags & 255);
 		HasZ = (flags & (1 << 31)) != 0;
 		HasM = (flags & (1 << 30)) != 0;
+		HasID = (flags & (1 << 28)) != 0; // TODO this is just a guess
 
 		// Field descriptions:
 		var fields = new List<FieldInfo>(Math.Max(0, FieldCount));
@@ -828,7 +829,7 @@ public sealed class Table : IDisposable
 
 			var type = (FieldType)reader.ReadByte();
 
-			var field = ReadFieldInfo(name, alias, type, reader, GeometryType, HasZ, HasM);
+			var field = ReadFieldInfo(name, alias, type, reader, GeometryType, HasZ, HasM, HasID);
 
 			fields.Add(field); // here we also add the OID field
 		}
@@ -840,7 +841,7 @@ public sealed class Table : IDisposable
 
 	private static FieldInfo ReadFieldInfo(
 		string name, string alias, FieldType type, DataReader reader,
-		GeometryType geometryType, bool tableHasZ, bool tableHasM)
+		GeometryType geometryType, bool tableHasZ, bool tableHasM, bool tableHasID)
 	{
 		byte flag, size;
 		var field = new FieldInfo(name, alias, type);
@@ -854,7 +855,7 @@ public sealed class Table : IDisposable
 				break;
 
 			case FieldType.Geometry:
-				var geomDef = new GeometryDef(geometryType, tableHasZ, tableHasM);
+				var geomDef = new GeometryDef(geometryType, tableHasZ, tableHasM, tableHasID);
 				_ = reader.ReadByte(); // unknown (always 0?)
 				flag = reader.ReadByte();
 				field.Nullable = (flag & 1) != 0;
@@ -1183,7 +1184,7 @@ public abstract class RowsResult //: IEnumerable<int>, IEnumerator<int>
 
 	public abstract long OID { get; }
 
-	public abstract byte[]? Shape { get; } // null if no shape
+	public abstract ShapeBuffer? Shape { get; } // null if no shape
 
 	public abstract object? GetValue(string fieldName);
 }
@@ -1225,7 +1226,7 @@ public class TableScanResult : RowsResult
 
 	public override long OID => _oid;
 
-	public override byte[]? Shape => GetShape();
+	public override ShapeBuffer? Shape => GetShape();
 
 	public override object? GetValue(string? fieldName)
 	{
@@ -1234,7 +1235,7 @@ public class TableScanResult : RowsResult
 		if (!_fieldIndices.TryGetValue(fieldName, out int index))
 		{
 			index = FindField(fieldName, _fields);
-			if (index < 0) throw new IOException($"No such field: {fieldName}");
+			if (index < 0) throw new FileGDBException($"No such field: {fieldName}");
 			_fieldIndices.Add(fieldName, index);
 		}
 
@@ -1270,14 +1271,14 @@ public class TableScanResult : RowsResult
 		return -1; // no shape field
 	}
 
-	private byte[]? GetShape()
+	private ShapeBuffer? GetShape()
 	{
 		if (_shapeFieldIndex < 0)
 		{
 			return null; // table has no shape field
 		}
 
-		return _values[_shapeFieldIndex] as byte[]; // TODO unpack and cache
+		return _values[_shapeFieldIndex] as ShapeBuffer;
 	}
 
 	private static bool HasGeometry(Table? table)

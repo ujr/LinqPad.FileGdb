@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Text;
+using static FileGDB.Core.ShapeBuffer;
 
 namespace FileGDB.Core;
 
@@ -12,29 +13,246 @@ public enum ShapeFlags
 	HasID = 4
 }
 
-public static class ShapeBuffer
+public class ShapeBuffer
 {
 	/// <summary>
 	/// Flags if the shape is of one of the "General" types
 	/// </summary>
 	public enum Flags : uint
 	{
-		HasZ = 0x80000000,
-		HasM = 0x40000000,
-		HasCurves = 0x20000000,
-		HasID = 0x10000000,
-		HasNormals = 0x8000000,
-		HasTextures = 0x4000000,
-		HasPartIDs = 0x2000000,
+		HasZ =        0x80000000,
+		HasM =        0x40000000,
+		HasCurves =   0x20000000,
+		HasID =       0x10000000,
+		HasNormals =   0x8000000,
+		HasTextures =  0x4000000,
+		HasPartIDs =   0x2000000,
 		HasMaterials = 0x1000000,
-		IsCompressed = 0x800000, // from FileGDBCore.h of FileGDB API, not in ext shp buf fmt white paper
+		IsCompressed =  0x800000, // from FileGDBCore.h of FileGDB API, not in ext shp buf fmt white paper
 		BasicTypeMask = 0xFF,
 		ShapeFlagsMask = 0xFF000000 // in FileGDBCore.h this is -16777216
 	}
 
+	private readonly byte[] _bytes;
+	private readonly uint _shapeType;
+
+	public ShapeBuffer(byte[] bytes)
+	{
+		_bytes = bytes ?? throw new ArgumentNullException(nameof(bytes));
+		_shapeType = _bytes.Length < 4 ? 0 : unchecked((uint)ReadInt32(0));
+	}
+
+	public int Length => _bytes.Length;
+
+	public byte this[int offset] => _bytes[offset];
+
+	public ShapeType ShapeType => GetShapeType(_shapeType);
+
+	public GeometryType GeometryType => GetGeometryType(_shapeType);
+
+	public bool HasZ => HasZs(_shapeType);
+	public bool HasM => HasMs(_shapeType);
+	public bool HasID => HasIDs(_shapeType);
+	public bool HasCurve => HasCurves(_shapeType);
+
+	public int NumPoints => GetPointCount();
+
+	public int NumParts => GetPartCount();
+
+	public bool IsEmpty => false; // TODO how are empty geoms represented in Ext Shp Buf?
+
+	public string ToWKT()
+	{
+		throw new NotImplementedException();
+	}
+
+	public override string ToString()
+	{
+		var sb = new StringBuilder();
+
+		sb.Append(GeometryType);
+
+		var dim = GetDim(HasZ, HasM, HasID);
+		if (!string.IsNullOrEmpty(dim))
+		{
+			sb.Append(' ');
+			sb.Append(dim);
+		}
+
+		if (IsEmpty)
+		{
+			sb.Append(" empty");
+		}
+		else
+		{
+			switch (GeometryType)
+			{
+				case GeometryType.Multipoint:
+					sb.Append($" NumPoints={NumPoints}");
+					break;
+				case GeometryType.Polyline:
+				case GeometryType.Polygon:
+					sb.Append($" NumPoints={NumPoints}");
+					sb.Append($" NumParts={NumParts}");
+					break;
+			}
+		}
+
+		return sb.ToString();
+	}
+
+	private static string GetDim(bool hasZ, bool hasM, bool hasID)
+	{
+		int key = 0;
+
+		if (hasZ) key += 1;
+		if (hasM) key += 2;
+		if (hasID) key += 4;
+
+		switch (key)
+		{
+			case 1:
+				return "Z";
+			case 2:
+				return "M";
+			case 3:
+				return "ZM";
+			case 4:
+				return "ID";
+			case 5:
+				return "ZID";
+			case 6:
+				return "MID";
+			case 7:
+				return "ZMID";
+		}
+
+		return string.Empty;
+	}
+
+	private int GetPointCount()
+	{
+		switch (GeometryType)
+		{
+			case GeometryType.Null:
+				return 0;
+			case GeometryType.Point:
+				return 1;
+			case GeometryType.Multipoint:
+				return ReadInt32(36);
+			case GeometryType.Polyline:
+			case GeometryType.Polygon:
+				return ReadInt32(40);
+			case GeometryType.MultiPatch:
+				return ReadInt32(40);
+			case GeometryType.Envelope:
+				return 0;
+			case GeometryType.Any:
+				throw new InvalidOperationException();
+			case GeometryType.Bag:
+				throw new NotImplementedException();
+			default:
+				throw new NotSupportedException($"Unknown geometry type: {GeometryType}");
+		}
+	}
+
+	private int GetPartCount()
+	{
+		switch (GeometryType)
+		{
+			case GeometryType.Null:
+				return 0;
+			case GeometryType.Point:
+				return 1;
+			case GeometryType.Multipoint:
+				return ReadInt32(36); // point count is also part count
+			case GeometryType.Polyline:
+			case GeometryType.Polygon:
+				return ReadInt32(36);
+			case GeometryType.MultiPatch:
+				return ReadInt32(36);
+			case GeometryType.Envelope:
+				return 1;
+			case GeometryType.Any:
+				throw new InvalidOperationException();
+			case GeometryType.Bag:
+				throw new NotImplementedException(); // part count at offset 8?
+			default:
+				throw new NotSupportedException($"Unknown geometry type: {GeometryType}");
+		}
+	}
+
+	private int ReadInt32(int offset)
+	{
+		try
+		{
+			var b0 = _bytes[offset + 0];
+			var b1 = _bytes[offset + 1];
+			var b2 = _bytes[offset + 2];
+			var b3 = _bytes[offset + 3];
+			return (b3 << 24) | (b2 << 16) | (b1 << 8) | b0;
+		}
+		catch (IndexOutOfRangeException)
+		{
+			throw InvalidShapeBuffer(
+				$"Attempt to read an integer (4 bytes) at offset {offset} " +
+				$"in a shape buffer of length {_bytes.Length}");
+		}
+	}
+
+	private double ReadDouble(int offset)
+	{
+		try
+		{
+			var b0 = _bytes[offset + 0];
+			var b1 = _bytes[offset + 1];
+			var b2 = _bytes[offset + 2];
+			var b3 = _bytes[offset + 3];
+			var b4 = _bytes[offset + 4];
+			var b5 = _bytes[offset + 5];
+			var b6 = _bytes[offset + 6];
+			var b7 = _bytes[offset + 7];
+			ulong lo = unchecked((ulong)((b3 << 24) | (b2 << 16) | (b1 << 8) | b0));
+			ulong hi = unchecked((ulong)((b7 << 24) | (b6 << 16) | (b5 << 8) | b4));
+			return BitConverter.UInt64BitsToDouble((hi << 32) | lo);
+		}
+		catch (IndexOutOfRangeException)
+		{
+			throw InvalidShapeBuffer(
+				$"Attempt to read a double (8 bytes) at offset {offset} " +
+				$"in a shape buffer of length {_bytes.Length}");
+		}
+	}
+
+	private static Exception InvalidShapeBuffer(string? message)
+	{
+		return new FormatException(message ?? "Invalid shape buffer");
+	}
+
+
 	public static ShapeType GetShapeType(ulong shapeType)
 	{
 		return (ShapeType)(shapeType & 255);
+	}
+
+	public static bool IsGeneralType(uint shapeType)
+	{
+		return IsGeneralType((ShapeType)shapeType);
+	}
+
+	public static bool IsGeneralType(ShapeType shapeType)
+	{
+		switch (shapeType)
+		{
+			case ShapeType.GeneralPoint:
+			case ShapeType.GeneralMultipoint:
+			case ShapeType.GeneralPolyline:
+			case ShapeType.GeneralPolygon:
+			case ShapeType.GeneralMultiPatch:
+				return true;
+			default:
+				return false;
+		}
 	}
 
 	public static GeometryType GetGeometryType(ulong shapeType)
@@ -81,6 +299,8 @@ public static class ShapeBuffer
 				return GeometryType.Multipoint;
 			case ShapeType.GeneralMultiPatch:
 				return GeometryType.MultiPatch;
+			case ShapeType.GeometryBag:
+				return GeometryType.Bag;
 			case ShapeType.Box:
 				return GeometryType.Envelope;
 			default:
@@ -170,21 +390,13 @@ public static class ShapeBuffer
 		return (shapeType & (uint)Flags.HasCurves) != 0;
 	}
 
-	public static uint GetPointShapeType(bool hasZ, bool hasM, bool hasID)
-	{
-		var type = (uint)ShapeType.GeneralPoint;
-		if (hasZ) type |= (uint)Flags.HasZ;
-		if (hasM) type |= (uint)Flags.HasM;
-		if (hasID) type |= (uint)Flags.HasID;
-		return type;
-	}
-
 	public static uint GetPointShapeType(ShapeFlags flags)
 	{
-		bool hasZ = (flags & ShapeFlags.HasZ) != 0;
-		bool hasM = (flags & ShapeFlags.HasM) != 0;
-		bool hasID = (flags & ShapeFlags.HasID) != 0;
-		return GetPointShapeType(hasZ, hasM, hasID);
+		var type = (uint)ShapeType.GeneralPoint;
+		if ((flags & ShapeFlags.HasZ) != 0) type |= (uint)Flags.HasZ;
+		if ((flags & ShapeFlags.HasM) != 0) type |= (uint)Flags.HasM;
+		if ((flags & ShapeFlags.HasID) != 0) type |= (uint)Flags.HasID;
+		return type;
 	}
 
 	public static uint GetMultipointShapeType(ShapeFlags flags)
@@ -205,37 +417,558 @@ public static class ShapeBuffer
 	}
 }
 
+public static class GeometryBlob
+{
+}
+
 public class GeometryBlobReader
 {
-	private readonly ShapeFactory _factory;
 	private readonly GeometryDef _geomDef;
 	private readonly byte[] _bytes;
 	private int _index;
 
 	public GeometryBlobReader(GeometryDef geomDef, byte[] bytes)
 	{
-		_factory = new ShapeFactory();
 		_geomDef = geomDef ?? throw new ArgumentNullException(nameof(geomDef));
 		_bytes = bytes ?? throw new ArgumentNullException(nameof(bytes));
 		_index = 0;
 	}
 
-	public bool HasZ => _geomDef.HasZ;
-	public bool HasM => _geomDef.HasM;
-	public bool HasID => false; // TODO
+	private bool HasZ => _geomDef.HasZ;
+	private bool HasM => _geomDef.HasM;
+	private bool HasID => false; // TODO
 
-	public double XOrigin => _geomDef.XOrigin;
-	public double YOrigin => _geomDef.YOrigin;
-	public double XYScale => _geomDef.XYScale;
+	private double XOrigin => _geomDef.XOrigin;
+	private double YOrigin => _geomDef.YOrigin;
+	private double XYScale => _geomDef.XYScale;
 
-	public double ZOrigin => _geomDef.ZOrigin;
-	public double ZScale => _geomDef.ZScale;
+	private double ZOrigin => _geomDef.ZOrigin;
+	private double ZScale => _geomDef.ZScale;
 
-	public double MOrigin => _geomDef.ZOrigin;
-	public double MScale => _geomDef.ZScale;
+	private double MOrigin => _geomDef.ZOrigin;
+	private double MScale => _geomDef.ZScale;
+
+	public bool Validate(out string message)
+	{
+		// compare GeometryDef vs ShapeType field in blob (and hope they agree)
+		throw new NotImplementedException();
+	}
+
+	public bool EntireBlobConsumed(out int bytesConsumed)
+	{
+		bytesConsumed = _index;
+		return _index == _bytes.Length;
+	}
+
+	/// <summary>
+	/// Decode the given File GDB geometry blob into a shape buffer byte array
+	/// </summary>
+	/// <returns>An Esri Shape Buffer byte array (or null if the given blob is null)</returns>
+	public ShapeBuffer? ReadAsShapeBuffer()
+	{
+		// first is geometry type:
+		var typeValue = ReadVuint();
+		if (typeValue > uint.MaxValue)
+			throw Error($"Shape type value too large: {typeValue}");
+		// TODO do shape type flags ever contradict field's GeometryDef?
+		var shapeType = ShapeBuffer.GetShapeType(typeValue);
+
+		switch (shapeType)
+		{
+			case ShapeType.Null:
+				return null; // TODO unsure
+			case ShapeType.Point:
+			case ShapeType.PointZ:
+			case ShapeType.PointM:
+			case ShapeType.PointZM:
+			case ShapeType.GeneralPoint:
+				return new ShapeBuffer(ReadPoint((uint)typeValue));
+			case ShapeType.Multipoint:
+			case ShapeType.MultipointZ:
+			case ShapeType.MultipointM:
+			case ShapeType.MultipointZM:
+			case ShapeType.GeneralMultipoint:
+				return new ShapeBuffer(ReadMultipoint((uint)typeValue));
+			case ShapeType.Polyline:
+			case ShapeType.PolylineZ:
+			case ShapeType.PolylineM:
+			case ShapeType.PolylineZM:
+			case ShapeType.GeneralPolyline:
+				return new ShapeBuffer(ReadMultipart((uint)typeValue));
+			case ShapeType.Polygon:
+			case ShapeType.PolygonZ:
+			case ShapeType.PolygonM:
+			case ShapeType.PolygonZM:
+			case ShapeType.GeneralPolygon:
+				return new ShapeBuffer(ReadMultipart((uint)typeValue));
+			case ShapeType.MultiPatch:
+			case ShapeType.MultiPatchM:
+			case ShapeType.GeneralMultiPatch:
+				throw new NotImplementedException("MultiPatch not yet implemented, sorry");
+			case ShapeType.GeometryBag: // can this occur in FGDB at all?
+				throw new NotImplementedException("GeometryBag not yet implemented");
+		}
+
+		throw Error($"Unknown shape type: {shapeType}");
+	}
+
+	private byte[] ReadPoint(uint shapeType)
+	{
+		// ShapeBuffer:
+		// - I32 ShapeType
+		// - F64 X, Y
+		// - if hasZ: F64 Z
+		// - if hasM: F64 M
+		// - if hasID: I32 ID
+		// Empty point: NaN for X and Y, zero(!) for Z if hasZ, NaN for M if hasM, zero for ID if hasID
+
+		bool hasZ = (shapeType & (uint)Flags.HasZ) != 0;
+		bool hasM = (shapeType & (uint)Flags.HasM) != 0;
+		bool hasID = (shapeType & (uint)Flags.HasID) != 0;
+
+		int length = 4 + 8 + 8;
+		if (HasZ) length += 8;
+		if (HasM) length += 8;
+		if (HasID) length += 4;
+
+		var bytes = new byte[length];
+
+		ulong ix = ReadVuint();
+		double x = ix < 1 ? double.NaN : XOrigin + (ix - 1) / XYScale;
+
+		ulong iy = ReadVuint();
+		double y = iy < 1 ? double.NaN : YOrigin + (iy - 1) / XYScale;
+
+		double z = 0.0; // sic
+		if (hasZ)
+		{
+			ulong iz = ReadVuint();
+			z = ZOrigin + (iz - 1) / ZScale;
+		}
+
+		double m = double.NaN;
+		if (hasM)
+		{
+			ulong im = ReadVuint();
+			m = MOrigin + (im - 1) / MScale;
+		}
+
+		int id = 0;
+		if (hasID)
+		{
+			// TODO is this really stored like this in FGDB?
+			long v = ReadVint();
+			id = unchecked((int)v);
+		}
+
+		int type = GetShapeType(GetGeneralType(shapeType), hasZ, hasM, hasID);
+
+		WriteInt32(type, bytes, 0);
+
+		WriteDouble(x, bytes, 4);
+		WriteDouble(y, bytes, 12);
+
+		int offset = 20;
+
+		if (hasZ)
+		{
+			WriteDouble(z, bytes, offset);
+			offset += 8;
+		}
+
+		if (hasM)
+		{
+			WriteDouble(m, bytes, offset);
+			offset += 8;
+		}
+
+		if (hasID)
+		{
+			WriteInt32(id, bytes, offset);
+		}
+
+		return bytes;
+	}
+
+	private byte[] ReadMultipoint(uint shapeType)
+	{
+		// ShapeBuffer:
+		// I32 type
+		// D64 xmin,ymin,xmax,ymax
+		// I32 numPoints
+		// D64[2*numPoints] xy coords
+		// if hasZ: D64 zmin,zmax; D64[numPoints] z coords
+		// if hasM: D64 mmin,mmax; D64[numPoints] m coords
+		// if hasID: I32[numPoints] id values
+		// Empty multipoint: 4x NaN for box, 0 for numPoints (total 40 bytes) + 2x NaN if hasZ + 2x NaN if hasM
+
+		bool hasZ = (shapeType & (uint)Flags.HasZ) != 0;
+		bool hasM = (shapeType & (uint)Flags.HasM) != 0;
+		bool hasID = (shapeType & (uint)Flags.HasID) != 0;
+
+		ulong vu = ReadVuint();
+		if (vu > int.MaxValue)
+			throw Error($"Multipoint geometry claims to have {vu} points, which is too big for this API");
+		int numPoints = (int)vu;
+
+		int length = 4 + 4 * 8 + 4;
+		length += numPoints * (8 + 8);
+		if (hasZ) length += 8 + 8 + numPoints * 8;
+		if (hasM) length += 8 + 8 + numPoints * 8;
+		if (hasID) length += numPoints * 4;
+
+		var bytes = new byte[length];
+
+		int type = GetShapeType(GetGeneralType(shapeType), hasZ, hasM, hasID);
+
+		WriteInt32(type, bytes, 0);
+
+		ReadBoxXY(out double xmin, out double ymin, out double xmax, out double ymax);
+
+		WriteDouble(xmin, bytes, 4);
+		WriteDouble(ymin, bytes, 12);
+		WriteDouble(xmax, bytes, 20);
+		WriteDouble(ymax, bytes, 28);
+
+		WriteInt32(numPoints, bytes, 36);
+
+		int offset = 40;
+
+		long dx = 0, dy = 0;
+		for (int i = 0; i < numPoints; i++)
+		{
+			long ix = ReadVint();
+			dx += ix;
+			long iy = ReadVint();
+			dy += iy;
+
+			double x = XOrigin + dx / XYScale;
+			double y = YOrigin + dy / XYScale;
+
+			WriteDouble(x, bytes, offset);
+			offset += 8;
+			WriteDouble(y, bytes, offset);
+			offset += 8;
+		}
+
+		if (hasZ)
+		{
+			// TODO really no Zmin ZMax in FGDB?
+
+			int offsetMinMax = offset;
+			// leave room for min/max Z
+			offset += 16;
+
+			long dz = 0;
+			double zmin = double.MaxValue;
+			double zmax = double.MinValue;
+			for (int i = 0; i < numPoints; i++)
+			{
+				long iz = ReadVint();
+				dz += iz;
+
+				double z = ZOrigin + dz / ZScale;
+
+				WriteDouble(z, bytes, offset);
+				offset += 8;
+
+				if (z < zmin) zmin = z;
+				if (z > zmax) zmax = z;
+			}
+
+			WriteDouble(zmin, bytes, offsetMinMax + 0);
+			WriteDouble(zmax, bytes, offsetMinMax + 8);
+		}
+
+		if (hasM)
+		{
+			// TODO really no Mmin Mmax in FGDB?
+
+			int offsetMinMax = offset;
+			// leave room for min/max M
+			offset += 16;
+
+			long dm = 0;
+			double mmin = double.MaxValue;
+			double mmax = double.MinValue;
+			for (int i = 0; i < numPoints; i++)
+			{
+				long im = ReadVint();
+				dm += im;
+
+				double m = MOrigin + dm / MScale;
+
+				WriteDouble(m, bytes, offset);
+				offset += 8;
+
+				if (m < mmin) mmin = m;
+				if (m > mmax) mmax = m;
+			}
+
+			WriteDouble(mmin, bytes, offsetMinMax + 0);
+			WriteDouble(mmax, bytes, offsetMinMax + 8);
+		}
+
+		if (hasID)
+		{
+			for (int i = 0; i < numPoints; i++)
+			{
+				long id = ReadVint();
+
+				WriteInt32(unchecked((int)id), bytes, offset);
+				offset += 4;
+			}
+		}
+
+		return bytes;
+	}
+
+	private byte[] ReadMultipart(uint shapeType)
+	{
+		// ShapeBuffer:
+		// - I32 type
+		// - F64 xmin,ymin,xmax,ymax
+		// - I32 numParts
+		// - I32 numPoints
+		// - I32[numParts] parts (index to first point in part)
+		// - F64[2*numPoints] xy coords
+		// - if hasZ: F64 zmin,zmax,z...
+		// - if hasM: F64 mmin,mmax,m...
+		// - if hasCurves: I32 numCurves, segment modifiers (...)
+		// - if hasIDs: I32[numPoints]
+		// Empty polyline/polygon: 4x NaN for box, 0 numParts, 0 numPoints (total 44 bytes)
+
+		// GeometryBlob:
+		// numPoints (vu)
+		// numParts (vu)
+		// numCurves (vu) if general type and HasCurves -- TODO or as in Ext Shp Buf?
+		// bbox (4x vu)
+		// perPartCounts (numParts-1 vu; num points in last part is not stored)
+		// XY coords
+		// if hasZ: Z coords (but it seems no min/max)
+		// if hasM: M coords (but it seems no min/max)
+		// if hasCurves: segment modifiers (...)
+		// if hasID: ???
+
+		bool hasZ = (shapeType & (uint)Flags.HasZ) != 0;
+		bool hasM = (shapeType & (uint)Flags.HasM) != 0;
+		bool hasCurves = IsGeneralType(shapeType) && (shapeType & (uint)Flags.HasCurves) != 0;
+		bool hasID = (shapeType & (uint)Flags.HasID) != 0;
+
+		ulong vu = ReadVuint();
+		if (vu == 0)
+			throw new NotImplementedException("Empty polyline/polygon -- find out how represented in Shape Buffer");
+		if (vu > int.MaxValue)
+			throw Error($"Multipart geometry claims to have {vu} points, which is too big for this API");
+		int numPoints = (int)vu;
+
+		vu = ReadVuint();
+		if (vu > (uint)numPoints)
+			throw Error($"Multipart geometry claims to have {vu} parts, which is more than it has points ({numPoints})");
+		int numParts = (int)vu;
+
+		int numCurves = 0;
+		if (hasCurves)
+		{
+			vu = ReadVuint();
+			if (vu > (uint)numPoints)
+				throw Error($"Multipart geometry claims to have {vu} curves but has only {numPoints} points");
+			numCurves = (int)vu;
+		}
+
+		if (numCurves > 0)
+			throw new NotImplementedException("Geometry with curve segments is not yet implemented");
+		// the trouble is that size depends on curve segment type,
+		// so we must first read all curve segments before we can
+		// compute shape buffer size...
+
+		int length = 4 + 4 * 8 + 4 + 4; // type, box, numParts, numPoints
+		length += numParts * 4; // part index array
+		length += numPoints * 16; // xy coords
+		if (hasZ) length += 8 + 8 + numPoints * 8; // zmin, zmax, z coords
+		if (hasM) length += 8 + 8 + numPoints * 8; // mmin, mmax, m coords
+		//if (hasCurves) todo
+		if (hasID) length += numPoints * 4; // id values (integers)
+
+		var bytes = new byte[length];
+
+		int type = GetShapeType(GetGeneralType(shapeType), hasZ, hasM, hasID, hasCurves);
+		WriteInt32(type, bytes, 0);
+
+		ReadBoxXY(out double xmin, out double ymin, out double xmax, out double ymax);
+
+		WriteDouble(xmin, bytes, 4);
+		WriteDouble(ymin, bytes, 12);
+		WriteDouble(xmax, bytes, 20);
+		WriteDouble(ymax, bytes, 28);
+
+		WriteInt32(numParts, bytes, 36);
+		WriteInt32(numPoints, bytes, 40);
+
+		int offset = 44;
+
+		int firstPointIndex = 0;
+		WriteInt32(firstPointIndex, bytes, offset);
+		offset += 4;
+		for (int k = 0; k < numParts - 1; k++)
+		{
+			vu = ReadVuint();
+			if (vu > (uint)numPoints)
+				throw Error($"Multipart geometry claims to have {vu} points in part {k}");
+			firstPointIndex += (int)vu;
+			WriteInt32(firstPointIndex, bytes, offset);
+			offset += 4;
+		}
+
+		long dx = 0, dy = 0;
+		for (int i = 0; i < numPoints; i++)
+		{
+			long ix = ReadVint();
+			dx += ix;
+			long iy = ReadVint();
+			dy += iy;
+
+			WriteDouble(XOrigin + dx / XYScale, bytes, offset);
+			offset += 8;
+			WriteDouble(YOrigin + dy / XYScale, bytes, offset);
+			offset += 8;
+		}
+
+		if (hasZ)
+		{
+			long dz = 0;
+			for (int i = 0; i < numPoints; i++)
+			{
+				long iz = ReadVint();
+				dz += iz;
+
+				WriteDouble(ZOrigin + dz / ZScale, bytes, offset);
+				offset += 8;
+			}
+		}
+
+		if (hasM)
+		{
+			long dm = 0;
+			for (int i = 0; i < numPoints; i++)
+			{
+				long im = ReadVint();
+				dm += im;
+
+				WriteDouble(MOrigin + dm / MScale, bytes, offset);
+				offset += 8;
+			}
+		}
+
+		if (hasCurves)
+			throw new NotImplementedException("Multipart with Z/M/Curves/ID not yet implemented");
+		// TODO Curves
+
+		if (hasID)
+		{
+			for (int i = 0; i < numPoints; i++)
+			{
+				// TODO unsure: delta coded or actual ID values?
+				long id = ReadVint();
+
+				WriteInt32(unchecked((int)id), bytes, offset);
+				offset += 4;
+			}
+		}
+
+		return bytes;
+	}
+
+	/*
+	SHPT_GENERALPOLYLINE, SHPT_GENERALPOLYGON:
+
+	   nb_total_points = read_varuint(f)
+	   if nb_total_points == 0:
+	       f.seek(saved_offset + geom_len, 0)
+	       continue
+
+   	   nb_geoms = read_varuint(f)
+
+	   # TODO ? Conditionnally or unconditionnally present ?
+	   if (geom_type & 0x20000000) != 0:
+	       nb_curves = read_varuint(f)
+
+	   read_bbox(f)
+	   tab_nb_points = read_tab_nbpoints(f, nb_geoms, nb_total_points)
+	   read_tab_xy(f, nb_geoms, tab_nb_points)
+
+	   if (geom_type & 0x80000000) != 0:
+	       read_tab_z(f, nb_geoms, tab_nb_points)
+
+	   if (geom_type & 0x40000000) != 0:
+	       read_tab_m(f, nb_geoms, tab_nb_points)
+
+	   if (geom_type & 0x20000000) != 0:
+	       read_curves(f)
+
+	SHPT_POLYGON, SHPT_POLYGONM, SHPT_POLYGONZM, SHPT_POLYGONZ:
+
+       nb_total_points = read_varuint(f)
+	   if nb_total_points == 0:
+	       f.seek(saved_offset + geom_len, 0)
+	       continue
+
+	   nb_geoms = read_varuint(f)
+
+	   read_bbox(f)
+	   tab_nb_points = read_tab_nbpoints(f, nb_geoms, nb_total_points)
+	   read_tab_xy(f, nb_geoms, tab_nb_points)
+
+	   if geom_type in (SHPT_ARCZM, SHPT_ARCZ, SHPT_POLYGONZM, SHPT_POLYGONZ):
+	       read_tab_z(f, nb_geoms, tab_nb_points)
+
+	   if geom_type in (SHPT_ARCZM, SHPT_ARCM, SHPT_POLYGONZM, SHPT_POLYGONM):
+	       read_tab_m(f, nb_geoms, tab_nb_points)
+
+	 */
+
+	private static void WriteInt32(int value, byte[] bytes, int offset)
+	{
+		if (bytes is null)
+			throw new ArgumentNullException(nameof(bytes));
+		if (offset < 0)
+			throw new ArgumentOutOfRangeException(nameof(offset));
+		if (offset + 4 > bytes.Length)
+			throw new ArgumentException("overflow", nameof(bytes));
+
+		// little endian
+		bytes[offset+0] = (byte)(value & 255);
+		bytes[offset+1] = (byte)((value >> 8) & 255);
+		bytes[offset+2] = (byte)((value >> 16) & 255);
+		bytes[offset+3] = (byte)((value >> 24) & 255);
+	}
+
+	private static void WriteDouble(double value, byte[] bytes, int offset = 0)
+	{
+		if (bytes is null)
+			throw new ArgumentNullException(nameof(bytes));
+		if (offset < 0)
+			throw new ArgumentOutOfRangeException(nameof(offset));
+		if (offset + 8 > bytes.Length)
+			throw new ArgumentException("overflow", nameof(bytes));
+
+		var bits = BitConverter.DoubleToUInt64Bits(value);
+
+		// little endian
+		bytes[offset+0] = (byte)(bits & 255);
+		bytes[offset+1] = (byte)((bits >> 8) & 255);
+		bytes[offset+2] = (byte)((bits >> 16) & 255);
+		bytes[offset+3] = (byte)((bits >> 24) & 255);
+		bytes[offset+4] = (byte)((bits >> 32) & 255);
+		bytes[offset+5] = (byte)((bits >> 40) & 255);
+		bytes[offset+6] = (byte)((bits >> 48) & 255);
+		bytes[offset+7] = (byte)((bits >> 56) & 255);
+	}
 
 	public Shape ReadShape()
 	{
+		var factory = new ShapeFactory();
+
 		// first is geometry type:
 		var type = ReadVuint();
 		var geometryType = ShapeBuffer.GetGeometryType(type);
@@ -274,8 +1007,8 @@ public class GeometryBlobReader
 
 			ReadBoxXY(out double xmin, out double ymin, out double xmax, out double ymax);
 
-			_factory.Initialize(GeometryType.Multipoint, HasZ, HasM, HasID, numPoints);
-			_factory.SetMinMaxXY(xmin, ymin, xmax, ymax);
+			factory.Initialize(GeometryType.Multipoint, HasZ, HasM, HasID, numPoints);
+			factory.SetMinMaxXY(xmin, ymin, xmax, ymax);
 
 			long dx = 0, dy = 0;
 			for (uint i = 0; i < inum; i++)
@@ -284,7 +1017,7 @@ public class GeometryBlobReader
 				dx += ix;
 				var iy = ReadVint();
 				dy += iy;
-				_factory.AddXY(XOrigin + dx / XYScale, YOrigin + dy / XYScale);
+				factory.AddXY(XOrigin + dx / XYScale, YOrigin + dy / XYScale);
 			}
 
 			if (HasZ)
@@ -300,7 +1033,7 @@ public class GeometryBlobReader
 				throw new NotImplementedException("multipoint with M: not yet implemented");
 			}
 
-			return _factory.ToShape();
+			return factory.ToShape();
 		}
 
 		if (geometryType is GeometryType.Polyline or GeometryType.Polygon)
@@ -313,13 +1046,13 @@ public class GeometryBlobReader
 
 			ReadBoxXY(out double xmin, out double ymin, out double xmax, out double ymax);
 
-			_factory.Initialize(geometryType, HasZ, HasM, HasID, numPoints, numParts);
-			_factory.SetMinMaxXY(xmin, ymin, xmax, ymax);
+			factory.Initialize(geometryType, HasZ, HasM, HasID, numPoints, numParts);
+			factory.SetMinMaxXY(xmin, ymin, xmax, ymax);
 
 			for (int k = 0; k < numParts - 1; k++)
 			{
 				var ipcnt = ReadVuint();
-				_factory.AddPartCount((int)ipcnt);
+				factory.AddPartCount((int)ipcnt);
 			}
 
 			long dx = 0, dy = 0;
@@ -329,7 +1062,7 @@ public class GeometryBlobReader
 				dx += ix;
 				var iy = ReadVint();
 				dy += iy;
-				_factory.AddXY(XOrigin + dx / XYScale, YOrigin + dy / XYScale);
+				factory.AddXY(XOrigin + dx / XYScale, YOrigin + dy / XYScale);
 			}
 
 			if (HasZ)
@@ -345,10 +1078,27 @@ public class GeometryBlobReader
 				throw new NotImplementedException("polyline/polygon with M: not yet implemented");
 			}
 
-			return _factory.ToShape();
+			return factory.ToShape();
 		}
 
 		throw new NotImplementedException($"Geometry of type {geometryType} is not yet implemented");
+	}
+
+	private void ReadPartPointCounts(int numParts, int numPoints)
+	{
+		int tally = 0;
+		for (int i = 0; i < numParts - 1; i++)
+		{
+			ulong vu = ReadVuint();
+			if (vu > int.MaxValue)
+				throw Error($"Geometry claims {vu} points in part {i}, but it only has {numPoints} points in total");
+			int pointsInPart = (int)vu;
+
+			tally += pointsInPart;
+		}
+
+		int pointsInLastPart = numPoints - tally;
+
 	}
 
 	private void ReadBoxXY(out double xmin, out double ymin, out double xmax, out double ymax)
@@ -402,9 +1152,66 @@ public class GeometryBlobReader
 		throw ReadingBeyondBlob();
 	}
 
+	private FormatException Error(string? message)
+	{
+		return new FormatException(message ?? "Malformed geometry BLOB");
+	}
+
 	private FormatException ReadingBeyondBlob()
 	{
 		return new FormatException("Reading beyond the end of the geometry blob");
+	}
+
+	private static ShapeType GetGeneralType(uint shapeType)
+	{
+		var basicType = (ShapeType)(shapeType & 255);
+		switch (basicType)
+		{
+			case ShapeType.Null:
+				return ShapeType.Null;
+			case ShapeType.Point:
+			case ShapeType.PointZ:
+			case ShapeType.PointZM:
+			case ShapeType.PointM:
+			case ShapeType.GeneralPoint:
+				return ShapeType.GeneralPoint;
+			case ShapeType.Multipoint:
+			case ShapeType.MultipointZ:
+			case ShapeType.MultipointZM:
+			case ShapeType.MultipointM:
+			case ShapeType.GeneralMultipoint:
+				return ShapeType.GeneralMultipoint;
+			case ShapeType.Polyline:
+			case ShapeType.PolylineZ:
+			case ShapeType.PolylineZM:
+			case ShapeType.PolylineM:
+			case ShapeType.GeneralPolyline:
+				return ShapeType.GeneralPolyline;
+			case ShapeType.Polygon:
+			case ShapeType.PolygonZ:
+			case ShapeType.PolygonZM:
+			case ShapeType.PolygonM:
+			case ShapeType.GeneralPolygon:
+				return ShapeType.GeneralPolygon;
+			case ShapeType.MultiPatch:
+			case ShapeType.MultiPatchM:
+			case ShapeType.GeneralMultiPatch:
+				return ShapeType.GeneralMultiPatch;
+			case ShapeType.GeometryBag:
+			case ShapeType.Box:
+			default:
+				throw new InvalidOperationException($"No general type for shape type {basicType}");
+		}
+	}
+
+	private static int GetShapeType(ShapeType generalType, bool hasZ, bool hasM, bool hasID, bool hasCurves = false)
+	{
+		var type = (uint)generalType;
+		if (hasZ) type |= (uint)Flags.HasZ;
+		if (hasM) type |= (uint)Flags.HasM;
+		if (hasID) type |= (uint)Flags.HasID;
+		if (hasCurves) type |= (uint)Flags.HasCurves;
+		return unchecked((int)type);
 	}
 }
 
@@ -1075,7 +1882,7 @@ public class ReadOnlySubList<T> : IReadOnlyList<T>
 /// Names and values as for ArcObjects esriShapeType constants, which
 /// are described as the "Esri Shapefile shape types". The general
 /// types are not supported in shape files but described in the
-/// "Extende Shape Buffer Format" white paper (2012).
+/// "Extended Shape Buffer Format" white paper (2012).
 /// </summary>
 public enum ShapeType
 {
@@ -1106,6 +1913,9 @@ public enum ShapeType
 	GeneralPoint = 52,
 	GeneralMultipoint = 53,
 	GeneralMultiPatch = 54,
+
+	// Undocumented
+	GeometryBag = 17,
 
 	// Custom additions
 	Box = 254
