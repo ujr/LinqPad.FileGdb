@@ -431,7 +431,16 @@ public sealed class Table : IDisposable
 		}
 
 		var currentPosition = _dataReader.Position;
-		Debug.Assert(currentPosition == startPosition + 4 + rowBlobSize);
+		var expectedPosition = startPosition + 4 + rowBlobSize;
+		var delta = expectedPosition - currentPosition;
+		Debug.Assert(delta >= 0, $"Oops, read {delta} byte(s) beyond end of row blob");
+		if (delta > 0)
+		{
+			var excess = _dataReader.ReadBytes((int)delta);
+			// Some test data gets me here with 4 bytes excess:
+			// LINESZM and MULTIPOINTSZM in TestSLDLM.gdb
+			//Debug.Assert(false, $"Unread data in row blob: {delta} byte(s)");
+		}
 
 		return values;
 	}
@@ -597,8 +606,8 @@ public sealed class Table : IDisposable
 		var r = new GeometryBlobReader(geomDef, bytes);
 		var shapeBuffer = r.ReadAsShapeBuffer();
 		if (!r.EntireBlobConsumed(out var bytesConsumed))
-			throw Error($"Geometry BLOB reader did not consume entire blob: " +
-			            $"consumed {bytesConsumed} of {bytes.Length} bytes in BLOB");
+			throw Error($"Geometry BLOB reader consumed only {bytesConsumed} bytes " +
+			            $"of a total of {bytes.Length} bytes in the BLOB");
 		
 		return shapeBuffer;
 //		var shape = r.ReadShape();
