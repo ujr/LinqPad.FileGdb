@@ -3,15 +3,6 @@ using System.Text;
 
 namespace FileGDB.Core;
 
-[Flags]
-public enum ShapeFlags
-{
-	None = 0,
-	HasZ = 1,
-	HasM = 2,
-	HasID = 4
-}
-
 public class ShapeBuffer
 {
 	/// <summary>
@@ -64,12 +55,291 @@ public class ShapeBuffer
 
 	public int NumParts => GetPartCount();
 
-	public bool IsEmpty => false; // TODO how are empty geoms represented in Ext Shp Buf?
+	public bool IsEmpty => GetIsEmpty();
 
-	public string ToWKT()
+	public int GetPartStartIndex(int part)
 	{
-		throw new NotImplementedException();
+		var geometryType = GeometryType;
+		if (geometryType != GeometryType.Polyline &&
+		    geometryType != GeometryType.Polygon)
+		{
+			throw new InvalidOperationException($"{nameof(GeometryType)} must be Polyline or Polygon");
+		}
+
+		int numParts = GetPartCount();
+		if (part < 0 || part >= numParts)
+		{
+			throw new ArgumentOutOfRangeException(nameof(part));
+		}
+
+		int offset = 44 + part * 4;
+		return ReadInt32(offset);
 	}
+
+	public void QueryCoords(int globalIndex, out double x, out double y, out double z, out double m, out int id)
+	{
+		if (globalIndex < 0)
+			throw new ArgumentOutOfRangeException(nameof(globalIndex));
+
+		switch (GeometryType)
+		{
+			case GeometryType.Null:
+				x = y = m = double.NaN;
+				z = 0.0;
+				id = 0;
+				return;
+
+			case GeometryType.Point:
+				if (globalIndex > 0)
+					throw new ArgumentOutOfRangeException(nameof(globalIndex));
+				QueryPointCoords(out x, out y, out z, out m, out id);
+				return;
+
+			case GeometryType.Multipoint:
+				QueryMultipointCoords(globalIndex, out x, out y, out z, out m, out id);
+				return;
+
+			case GeometryType.Polyline:
+			case GeometryType.Polygon:
+				QueryMultipartCoords(globalIndex, out x, out y, out z, out m, out id);
+				return;
+
+			case GeometryType.Envelope:
+				throw new InvalidOperationException("Envelope does not have coordinates");
+
+			case GeometryType.MultiPatch:
+				throw new NotImplementedException();
+
+			case GeometryType.Bag:
+				throw new NotSupportedException();
+
+			default:
+				throw new ArgumentOutOfRangeException();
+		}
+	}
+
+	private void QueryPointCoords(out double x, out double y, out double z, out double m, out int id)
+	{
+		x = ReadDouble(4);
+		y = ReadDouble(12);
+
+		int offset = 20;
+
+		if (HasZ)
+		{
+			z = ReadDouble(offset);
+			offset += 8;
+		}
+		else
+		{
+			z = DefaultZ;
+		}
+
+		if (HasM)
+		{
+			m = ReadDouble(offset);
+			offset += 8;
+		}
+		else
+		{
+			m = DefaultM;
+		}
+
+		id = HasID ? ReadInt32(offset) : DefaultID;
+	}
+
+	private void QueryMultipointCoords(int index, out double x, out double y, out double z, out double m, out int id)
+	{
+		var numPoints = GetPointCount();
+		if (index < 0 || index >= numPoints)
+			throw new ArgumentOutOfRangeException(nameof(index));
+
+		int start = 40;
+		int offset = start + index * 16;
+		x = ReadDouble(offset + 0);
+		y = ReadDouble(offset + 8);
+		start += numPoints * 16;
+
+		if (HasZ)
+		{
+			start += 16; // zmin,zmax
+			offset = start + index * 8;
+			z = ReadDouble(offset);
+			start += numPoints * 8;
+		}
+		else
+		{
+			z = DefaultZ;
+		}
+
+		if (HasM)
+		{
+			start += 16; // mmin,mmax
+			offset = start + index * 8;
+			m = ReadDouble(offset);
+			start += numPoints * 8;
+		}
+		else
+		{
+			m = DefaultM;
+		}
+
+		if (HasID)
+		{
+			offset = start + index * 4;
+			id = ReadInt32(offset);
+		}
+		else
+		{
+			id = DefaultID;
+		}
+	}
+
+	private void QueryMultipartCoords(int index, out double x, out double y, out double z, out double m, out int id)
+	{
+		var numPoints = GetPointCount();
+		if (index < 0 || index >= numPoints)
+			throw new ArgumentOutOfRangeException(nameof(index));
+
+		var numParts = GetPartCount();
+
+		int start = 44 + numParts * 4;
+
+		int offset = start + index * 16;
+		x = ReadDouble(offset + 0);
+		y = ReadDouble(offset + 8);
+
+		start += numPoints * 16;
+
+		if (HasZ)
+		{
+			start += 16; // zmin,zmax
+			offset = start + index * 8;
+			z = ReadDouble(offset);
+			start += numPoints * 8;
+		}
+		else
+		{
+			z = DefaultZ;
+		}
+
+		if (HasM)
+		{
+			start += 16; // mmin,mmax
+			offset = start + index * 8;
+			m = ReadDouble(offset);
+			start += numPoints * 8;
+		}
+		else
+		{
+			m = DefaultM;
+		}
+
+		if (HasID)
+		{
+			offset = start + index * 4;
+			id = ReadInt32(offset);
+		}
+		else
+		{
+			id = DefaultID;
+		}
+	}
+
+	// TODO overloads void ToWKT(StringBuilder) and ToWKT(TextWriter)
+	public string ToWKT(int decimalDigits = -1)
+	{
+		var buffer = new StringBuilder();
+		var writer = new WKTWriter(buffer) { DecimalDigits = decimalDigits };
+		WriteWKT(writer);
+		writer.Flush();
+		return buffer.ToString();
+	}
+
+	#region WKT methods
+
+	private void WriteWKT(WKTWriter writer)
+	{
+		switch (GeometryType)
+		{
+			case GeometryType.Null:
+				break;
+
+			case GeometryType.Point:
+				writer.BeginPoint(HasZ, HasM, HasID);
+				WritePointCoords(writer, IsEmpty);
+				writer.EndShape();
+				break;
+
+			case GeometryType.Multipoint:
+				writer.BeginMultipoint(HasZ, HasM, HasID);
+				WriteMultipointCoords(writer, NumPoints);
+				writer.EndShape();
+				break;
+
+			case GeometryType.Polyline:
+				writer.BeginMultiLineString(HasZ, HasM, HasID);
+				WriteMultipartCoords(writer, NumPoints, NumParts);
+				writer.EndShape();
+				break;
+
+			case GeometryType.Polygon:
+				writer.BeginMultiPolygon(HasZ, HasM, HasID);
+				WriteMultipartCoords(writer, NumPoints, NumParts);
+				writer.EndShape();
+				break;
+
+			case GeometryType.Envelope:
+				throw new NotImplementedException("Envelope to WKT is not implemented");
+
+			case GeometryType.Any:
+				throw new InvalidOperationException("GeometryType Any is invalid for this operation");
+
+			case GeometryType.MultiPatch:
+				throw new NotSupportedException("MultiPatch to WKT is not supported");
+
+			case GeometryType.Bag:
+				throw new NotSupportedException("GeometryBag to WKT is not supported");
+
+			default:
+				throw new InvalidOperationException($"Unknown geometry type: {GeometryType}");
+		}
+	}
+
+	private void WritePointCoords(WKTWriter writer, bool isEmpty)
+	{
+		if (isEmpty) return;
+		QueryPointCoords(out var x, out var y, out var z, out var m, out var id);
+		writer.AddVertex(x, y, z, m, id);
+	}
+
+	private void WriteMultipointCoords(WKTWriter writer, int numPoints)
+	{
+		for (int i = 0; i < numPoints; i++)
+		{
+			QueryMultipointCoords(i, out var x, out var y, out var z, out var m, out int id);
+			writer.AddVertex(x, y, z, m, id);
+		}
+	}
+
+	private void WriteMultipartCoords(WKTWriter writer, int numPoints, int numParts)
+	{
+		for (int i = 0, j = 0, k = 0; i < numPoints; i++)
+		{
+			if (i == k) // first vertex of new part
+			{
+				writer.NewPart();
+				j += 1;
+				k = j < numParts ? GetPartStartIndex(j) : int.MaxValue;
+			}
+
+			QueryMultipartCoords(i, out var x, out var y, out var z, out var m, out int id);
+
+			writer.AddVertex(x, y, z, m, id);
+		}
+	}
+
+	#endregion
 
 	public override string ToString()
 	{
@@ -134,6 +404,37 @@ public class ShapeBuffer
 		}
 
 		return string.Empty;
+	}
+
+	private bool GetIsEmpty()
+	{
+		// point: X and Y are NaN
+		// multipoint: numPoints is zero
+		// multipart: numPoints is zero
+		switch (GeometryType)
+		{
+			case GeometryType.Null:
+				return true;
+			case GeometryType.Point:
+				var x = ReadDouble(4);
+				var y = ReadDouble(12);
+				return double.IsNaN(x) || double.IsNaN(y);
+			case GeometryType.Multipoint:
+				return ReadInt32(36) == 0;
+			case GeometryType.Polyline:
+			case GeometryType.Polygon:
+				return ReadInt32(40) == 0;
+			case GeometryType.Envelope:
+				throw new NotImplementedException(); // TODO find out how empty env is represented
+			case GeometryType.Any:
+				throw new InvalidOperationException();
+			case GeometryType.MultiPatch:
+				return ReadInt32(40) == 0;
+			case GeometryType.Bag:
+				throw new NotImplementedException();
+			default:
+				throw new ArgumentOutOfRangeException();
+		}
 	}
 
 	private int GetPointCount()
@@ -467,6 +768,15 @@ public readonly struct XY
 		X = x;
 		Y = y;
 	}
+}
+
+[Flags]
+public enum ShapeFlags
+{
+	None = 0,
+	HasZ = 1,
+	HasM = 2,
+	HasID = 4
 }
 
 public abstract class Shape
