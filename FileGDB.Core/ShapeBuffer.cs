@@ -188,10 +188,10 @@ public class ShapeBuffer
 	{
 		try
 		{
-			var b0 = _bytes[offset + 0];
-			var b1 = _bytes[offset + 1];
-			var b2 = _bytes[offset + 2];
-			var b3 = _bytes[offset + 3];
+			int b0 = _bytes[offset + 0];
+			int b1 = _bytes[offset + 1];
+			int b2 = _bytes[offset + 2];
+			int b3 = _bytes[offset + 3];
 			return (b3 << 24) | (b2 << 16) | (b1 << 8) | b0;
 		}
 		catch (IndexOutOfRangeException)
@@ -206,16 +206,17 @@ public class ShapeBuffer
 	{
 		try
 		{
-			var b0 = _bytes[offset + 0];
-			var b1 = _bytes[offset + 1];
-			var b2 = _bytes[offset + 2];
-			var b3 = _bytes[offset + 3];
-			var b4 = _bytes[offset + 4];
-			var b5 = _bytes[offset + 5];
-			var b6 = _bytes[offset + 6];
-			var b7 = _bytes[offset + 7];
-			ulong lo = unchecked((ulong)((b3 << 24) | (b2 << 16) | (b1 << 8) | b0));
-			ulong hi = unchecked((ulong)((b7 << 24) | (b6 << 16) | (b5 << 8) | b4));
+			uint b0 = _bytes[offset + 0];
+			uint b1 = _bytes[offset + 1];
+			uint b2 = _bytes[offset + 2];
+			uint b3 = _bytes[offset + 3];
+			uint b4 = _bytes[offset + 4];
+			uint b5 = _bytes[offset + 5];
+			uint b6 = _bytes[offset + 6];
+			uint b7 = _bytes[offset + 7];
+			// read bytes into uint; by default, C# casts shifts on byte to int
+			ulong lo = (b3 << 24) | (b2 << 16) | (b1 << 8) | b0;
+			ulong hi = (b7 << 24) | (b6 << 16) | (b5 << 8) | b4;
 			return BitConverter.UInt64BitsToDouble((hi << 32) | lo);
 		}
 		catch (IndexOutOfRangeException)

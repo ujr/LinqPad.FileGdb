@@ -699,7 +699,7 @@ public class GeometryBlobReader
 		while (_blobIndex < _blob.Length)
 		{
 			b = _blob[_blobIndex++];
-			result |= (long)(b & 0x3F) << shift;
+			result |= (long)(b & 0x7F) << shift;
 			if ((b & 0x80) == 0) return sign * result;
 			if (shift <= 49) shift += 7;
 			else throw VarIntOverflow();
@@ -716,7 +716,7 @@ public class GeometryBlobReader
 		while (_blobIndex < _blob.Length)
 		{
 			byte b = _blob[_blobIndex++];
-			result |= (ulong)(b & 0x3F) << shift;
+			result |= (ulong)(b & 0x7F) << shift;
 			if ((b & 0x80) == 0) return result;
 			if (shift <= 49) shift += 7;
 			else throw VarIntOverflow();
