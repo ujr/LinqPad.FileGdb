@@ -3,6 +3,9 @@ using System.Text;
 
 namespace FileGDB.Core;
 
+/// <summary>
+/// An Esri Extended Shape Buffer formatted byte array
+/// </summary>
 public class ShapeBuffer
 {
 	/// <summary>
@@ -46,10 +49,10 @@ public class ShapeBuffer
 
 	public GeometryType GeometryType => GetGeometryType(_shapeType);
 
-	public bool HasZ => HasZs(_shapeType);
-	public bool HasM => HasMs(_shapeType);
-	public bool HasID => HasIDs(_shapeType);
-	public bool HasCurve => HasCurves(_shapeType);
+	public bool HasZ => GetHasZ(_shapeType);
+	public bool HasM => GetHasM(_shapeType);
+	public bool HasID => GetHasID(_shapeType);
+	public bool HasCurves => GetHasCurves(_shapeType);
 
 	public int NumPoints => GetPointCount();
 
@@ -369,7 +372,7 @@ public class ShapeBuffer
 				case GeometryType.Polygon:
 					sb.Append($", {NumPoints} point{(NumPoints == 1 ? "" : "s")}");
 					sb.Append($", {NumParts} part{(NumParts == 1 ? "" : "s")}");
-					if (HasCurve) sb.Append(", curves");
+					if (HasCurves) sb.Append(", curves");
 					break;
 			}
 		}
@@ -548,26 +551,6 @@ public class ShapeBuffer
 		return (ShapeType)(shapeType & 255);
 	}
 
-	public static bool IsGeneralType(uint shapeType)
-	{
-		return IsGeneralType((ShapeType)shapeType);
-	}
-
-	public static bool IsGeneralType(ShapeType shapeType)
-	{
-		switch (shapeType)
-		{
-			case ShapeType.GeneralPoint:
-			case ShapeType.GeneralMultipoint:
-			case ShapeType.GeneralPolyline:
-			case ShapeType.GeneralPolygon:
-			case ShapeType.GeneralMultiPatch:
-				return true;
-			default:
-				return false;
-		}
-	}
-
 	public static GeometryType GetGeometryType(ulong shapeType)
 	{
 		return GetGeometryType(GetShapeType(shapeType));
@@ -621,16 +604,7 @@ public class ShapeBuffer
 		}
 	}
 
-	public static ShapeFlags GetShapeFlags(uint shapeType)
-	{
-		var flags = ShapeFlags.None;
-		if (HasZs(shapeType)) flags |= ShapeFlags.HasZ;
-		if (HasMs(shapeType)) flags |= ShapeFlags.HasM;
-		if (HasIDs(shapeType)) flags |= ShapeFlags.HasID;
-		return flags;
-	}
-
-	public static bool HasZs(uint shapeType)
+	public static bool GetHasZ(uint shapeType)
 	{
 		switch ((ShapeType)(shapeType & (uint)Flags.BasicTypeMask))
 		{
@@ -656,7 +630,7 @@ public class ShapeBuffer
 		}
 	}
 
-	public static bool HasMs(uint shapeType)
+	public static bool GetHasM(uint shapeType)
 	{
 		switch ((ShapeType)(shapeType & (uint)Flags.BasicTypeMask))
 		{
@@ -682,12 +656,12 @@ public class ShapeBuffer
 		}
 	}
 
-	public static bool HasIDs(uint shapeType)
+	public static bool GetHasID(uint shapeType)
 	{
 		return (shapeType & (uint)Flags.HasID) != 0;
 	}
 
-	public static bool HasCurves(uint shapeType)
+	public static bool GetHasCurves(uint shapeType)
 	{
 		// special case mentioned in Ext Shp Buf Fmt p.4:
 		var basicType = (ShapeType)(shapeType & 255);
@@ -697,7 +671,7 @@ public class ShapeBuffer
 		if (basicType is ShapeType.GeneralPolygon or ShapeType.GeneralPolyline &&
 		    noModifierBits)
 		{
-			return true;
+			return true; // TODO also check numCurves? often the count is 0
 		}
 
 		return (shapeType & (uint)Flags.HasCurves) != 0;
@@ -785,10 +759,10 @@ public abstract class Shape
 	private BoxShape? _box;
 
 	public GeometryType Type => ShapeBuffer.GetGeometryType(_shapeType);
-	public ShapeFlags Flags => ShapeBuffer.GetShapeFlags(_shapeType);
-	public bool HasZ => ShapeBuffer.HasZs(_shapeType);
-	public bool HasM => ShapeBuffer.HasMs(_shapeType);
-	public bool HasID => ShapeBuffer.HasIDs(_shapeType);
+	public ShapeFlags Flags => GetShapeFlags(_shapeType);
+	public bool HasZ => ShapeBuffer.GetHasZ(_shapeType);
+	public bool HasM => ShapeBuffer.GetHasM(_shapeType);
+	public bool HasID => ShapeBuffer.GetHasID(_shapeType);
 
 	public const double DefaultZ = 0.0;
 	public const double DefaultM = double.NaN;
@@ -908,6 +882,15 @@ public abstract class Shape
 		}
 
 		return new BoxShape(Flags, xmin, ymin, xmax, ymax, zmin, zmax, mmin, mmax);
+	}
+
+	private static ShapeFlags GetShapeFlags(uint shapeType)
+	{
+		var flags = ShapeFlags.None;
+		if (ShapeBuffer.GetHasZ(shapeType)) flags |= ShapeFlags.HasZ;
+		if (ShapeBuffer.GetHasM(shapeType)) flags |= ShapeFlags.HasM;
+		if (ShapeBuffer.GetHasID(shapeType)) flags |= ShapeFlags.HasID;
+		return flags;
 	}
 }
 

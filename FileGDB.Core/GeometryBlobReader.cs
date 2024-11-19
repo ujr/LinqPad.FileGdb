@@ -34,13 +34,14 @@ public class GeometryBlobReader
 	}
 
 	/// <summary>
-	/// Decode the given File GDB geometry blob into a shape buffer byte array
+	/// Decode the given File GDB geometry blob into an Esri Shape Buffer
 	/// </summary>
 	/// <returns>An Esri Shape Buffer byte array (or null if the given blob is null)</returns>
 	public ShapeBuffer? ReadAsShapeBuffer()
 	{
 		if (_blob.Length < 1)
 		{
+			// treat empty geometry blob as NULL
 			return null;
 		}
 
@@ -84,7 +85,7 @@ public class GeometryBlobReader
 			case ShapeType.GeneralMultiPatch:
 				throw new NotImplementedException("MultiPatch not yet implemented, sorry");
 			case ShapeType.GeometryBag: // can this occur in FGDB at all?
-				throw new NotImplementedException("GeometryBag not yet implemented");
+				throw new NotSupportedException("GeometryBag is not supported");
 		}
 
 		throw Error($"Unknown shape type: {shapeType}");
@@ -100,9 +101,9 @@ public class GeometryBlobReader
 		// - if hasID: I32 ID
 		// Empty point: NaN for X and Y, zero(!) for Z if hasZ, NaN for M if hasM, zero for ID if hasID
 
-		bool hasZ = ShapeBuffer.HasZs(shapeType);
-		bool hasM = ShapeBuffer.HasMs(shapeType);
-		bool hasID = ShapeBuffer.HasIDs(shapeType);
+		bool hasZ = ShapeBuffer.GetHasZ(shapeType);
+		bool hasM = ShapeBuffer.GetHasM(shapeType);
+		bool hasID = ShapeBuffer.GetHasID(shapeType);
 
 		int length = 4 + 8 + 8;
 		if (hasZ) length += 8;
@@ -172,9 +173,9 @@ public class GeometryBlobReader
 		// Empty multipoint: 4x NaN for box, 0 for numPoints (total 40 bytes)
 		//   plus 2x NaN for Zmin,Zmax if hasZ, plus 2x NaN for Mmin,Mmax if hasM
 
-		bool hasZ = ShapeBuffer.HasZs(shapeType);
-		bool hasM = ShapeBuffer.HasMs(shapeType);
-		bool hasID = ShapeBuffer.HasIDs(shapeType);
+		bool hasZ = ShapeBuffer.GetHasZ(shapeType);
+		bool hasM = ShapeBuffer.GetHasM(shapeType);
+		bool hasID = ShapeBuffer.GetHasID(shapeType);
 
 		ulong vu = ReadVarUnsigned();
 		if (vu > int.MaxValue)
@@ -255,10 +256,10 @@ public class GeometryBlobReader
 		// if hasCurves: segment modifiers (can only read sequentially)
 		// if hasID: ID values (vi)
 
-		bool hasZ = ShapeBuffer.HasZs(shapeType);
-		bool hasM = ShapeBuffer.HasMs(shapeType);
-		bool hasCurves = ShapeBuffer.HasCurves(shapeType);
-		bool hasID = ShapeBuffer.HasIDs(shapeType);
+		bool hasZ = ShapeBuffer.GetHasZ(shapeType);
+		bool hasM = ShapeBuffer.GetHasM(shapeType);
+		bool hasCurves = ShapeBuffer.GetHasCurves(shapeType);
+		bool hasID = ShapeBuffer.GetHasID(shapeType);
 
 		ulong vu = ReadVarUnsigned();
 		if (vu == 0)
@@ -693,8 +694,8 @@ public class GeometryBlobReader
 		if (offset + 8 > bytes.Length)
 			throw new ArgumentException("overflow", nameof(bytes));
 
-		// Empirical: Pro SDK Geometry.ToEsriShape() writes NaN as double.MinValue (FF FF FF FF FF FF EF FF)
-		// Disassembly: ShapeBufferHelper methods have a flag "writeTrueNaNs" (controls NaN vs MinValue)
+		// Empirical: Pro SDK Geometry.ToEsriShape() writes NaN as double.MinValue (FF:FF:FF:FF:FF:FF:EF:FF)
+		// ShapeBufferHelper methods have a flag "writeTrueNaNs" (controls NaN vs MinValue), but don't know how this flag is used
 
 		var bits = BitConverter.DoubleToUInt64Bits(value);
 
@@ -771,7 +772,9 @@ public class GeometryBlobReader
 	private int ReadInt32()
 	{
 		if (_blobIndex + 4 > _blob.Length)
+		{
 			throw ReadingBeyondBlob();
+		}
 
 		byte b0 = _blob[_blobIndex++];
 		byte b1 = _blob[_blobIndex++];
@@ -785,7 +788,9 @@ public class GeometryBlobReader
 	private double ReadDouble()
 	{
 		if (_blobIndex + 8 > _blob.Length)
+		{
 			throw ReadingBeyondBlob();
+		}
 
 		byte b0 = _blob[_blobIndex++];
 		byte b1 = _blob[_blobIndex++];
@@ -815,6 +820,6 @@ public class GeometryBlobReader
 
 	private FormatException VarIntOverflow()
 	{
-		return Error("File GDB Variable Integer overflows a 64bit integer");
+		return Error("File GDB VarInt overflows a 64bit integer");
 	}
 }
