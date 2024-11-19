@@ -127,18 +127,18 @@ public class WKTWriter : IDisposable
 		_vertexIndex = 0;
 	}
 
-	public void AddVertex(double x, double y, double z = double.NaN, double m = double.NaN, int? id = null)
+	public void AddVertex(double x, double y, double z = 0.0, double m = double.NaN, int id = 0)
 	{
 		if (_state == State.Initial)
 			throw InvalidOperation("No current shape");
 		if (_state == State.Point && _vertexIndex > 0)
 			throw InvalidOperation("A point can only have one vertex");
 
-		if (!CurrentHasZ && !double.IsNaN(z))
+		if (!CurrentHasZ && z is not (0.0 or double.NaN))
 			throw new ArgumentException("Current shape is not Z aware", nameof(z));
 		if (!CurrentHasM && !double.IsNaN(m))
 			throw new ArgumentException("Current shape is not M aware", nameof(m));
-		if (!CurrentHasID && id.HasValue)
+		if (!CurrentHasID && id != 0)
 			throw new ArgumentException("Current shape is not ID aware", nameof(id));
 
 		if (_vertexIndex == 0)
@@ -194,7 +194,7 @@ public class WKTWriter : IDisposable
 		if (CurrentHasID && id > 0)
 		{
 			_writer.Write(sep);
-			_writer.Write(id.Value);
+			_writer.Write(id);
 		}
 
 		_vertexIndex += 1;
@@ -231,11 +231,11 @@ public class WKTWriter : IDisposable
 		_newPolygon = false;
 	}
 
-	public void WritePoint(double x, double y, double z = double.NaN, double m = double.NaN, int? id = null)
+	public void WritePoint(double x, double y, double z = 0.0, double m = double.NaN, int id = 0)
 	{
 		bool hasZ = !double.IsNaN(z);
 		bool hasM = !double.IsNaN(m);
-		bool hasID = id.HasValue;
+		bool hasID = id != 0;
 
 		BeginPoint(hasZ, hasM, hasID);
 		AddVertex(x, y, z, m, id);

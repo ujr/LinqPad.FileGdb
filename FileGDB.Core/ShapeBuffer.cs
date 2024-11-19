@@ -35,6 +35,10 @@ public class ShapeBuffer
 	private readonly byte[] _bytes;
 	private readonly uint _shapeType;
 
+	public const double DefaultZ = 0.0;
+	public const double DefaultM = double.NaN;
+	public const int DefaultID = 0;
+
 	public ShapeBuffer(byte[] bytes)
 	{
 		_bytes = bytes ?? throw new ArgumentNullException(nameof(bytes));
@@ -476,7 +480,7 @@ public abstract class Shape
 	public bool HasM => ShapeBuffer.HasMs(_shapeType);
 	public bool HasID => ShapeBuffer.HasIDs(_shapeType);
 
-	public const double DefaultZ = double.NaN;
+	public const double DefaultZ = 0.0;
 	public const double DefaultM = double.NaN;
 	public const int DefaultID = 0;
 
@@ -898,7 +902,7 @@ public abstract class MultipartShape : PointListShape
 			var xy = CoordsXY[i];
 			var z = CoordsZ is null ? DefaultZ : CoordsZ[i];
 			var m = CoordsM is null ? DefaultM : CoordsM[i];
-			var id = CoordsID?[i]; // null unless HasID
+			var id = CoordsID?[i] ?? DefaultID; // null unless HasID
 
 			writer.AddVertex(xy.X, xy.Y, z, m, id);
 		}
