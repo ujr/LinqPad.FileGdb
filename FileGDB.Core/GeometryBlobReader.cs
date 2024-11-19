@@ -261,6 +261,8 @@ public class GeometryBlobReader
 		bool hasID = ShapeBuffer.HasIDs(shapeType);
 
 		ulong vu = ReadVarUnsigned();
+		if (vu == 0)
+			return CreateEmptyMultipartShapeBuffer(shapeType);
 		if (vu > int.MaxValue)
 			throw Error($"Multipart geometry claims to have {vu} points, which is too big for this API");
 		int numPoints = (int)vu;
@@ -429,6 +431,47 @@ public class GeometryBlobReader
 			default:
 				throw Error($"Unknown segment type {segmentType}");
 		}
+	}
+
+	private static byte[] CreateEmptyMultipartShapeBuffer(uint shapeType)
+	{
+		bool hasZ = ShapeBuffer.GetHasZ(shapeType);
+		bool hasM = ShapeBuffer.GetHasM(shapeType);
+		bool hasID = ShapeBuffer.GetHasID(shapeType);
+		int type = ShapeBuffer.GetShapeType(shapeType, hasZ, hasM, hasID);
+
+		int length = 4 + 4 * 8 + 4 + 4;
+		if (hasZ) length += 8 + 8;
+		if (hasM) length += 8 + 8;
+
+		var bytes = new byte[length];
+		int offset = 0;
+
+		offset += WriteInt32(type, bytes, offset);
+
+		offset += WriteDouble(double.NaN, bytes, offset); // xmin
+		offset += WriteDouble(double.NaN, bytes, offset); // ymin
+		offset += WriteDouble(double.NaN, bytes, offset); // xmax
+		offset += WriteDouble(double.NaN, bytes, offset); // ymax
+
+		offset += WriteInt32(0, bytes, offset); // numParts
+		offset += WriteInt32(0, bytes, offset); // numPoints
+
+		if (hasZ)
+		{
+			offset += WriteDouble(double.NaN, bytes, offset); // zmin
+			offset += WriteDouble(double.NaN, bytes, offset); // zmax
+		}
+
+		if (hasM)
+		{
+			offset += WriteDouble(double.NaN, bytes, offset); // mmin
+			offset += WriteDouble(double.NaN, bytes, offset); // mmax
+		}
+
+		Debug.Assert(bytes.Length == offset);
+
+		return bytes;
 	}
 
 	private int CopyXYs(int numPoints, byte[] bytes, int offset)
