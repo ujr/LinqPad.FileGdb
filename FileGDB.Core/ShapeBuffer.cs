@@ -248,14 +248,25 @@ public class ShapeBuffer
 		}
 	}
 
-	// TODO overloads void ToWKT(StringBuilder) and ToWKT(TextWriter)
 	public string ToWKT(int decimalDigits = -1)
 	{
 		var buffer = new StringBuilder();
-		var writer = new WKTWriter(buffer) { DecimalDigits = decimalDigits };
-		WriteWKT(writer);
-		writer.Flush();
+		ToWKT(buffer, decimalDigits);
 		return buffer.ToString();
+	}
+
+	public void ToWKT(StringBuilder buffer, int decimalDigits = -1)
+	{
+		var writer = new StringWriter(buffer);
+		ToWKT(writer, decimalDigits);
+		writer.Flush();
+	}
+
+	public void ToWKT(TextWriter writer, int decimalDigits = -1)
+	{
+		var wkt = new WKTWriter(writer) { DecimalDigits = decimalDigits };
+		WriteWKT(wkt);
+		wkt.Flush();
 	}
 
 	#region WKT methods
@@ -524,7 +535,8 @@ public class ShapeBuffer
 			// read bytes into uint; by default, C# casts shifts on byte to int
 			ulong lo = (b3 << 24) | (b2 << 16) | (b1 << 8) | b0;
 			ulong hi = (b7 << 24) | (b6 << 16) | (b5 << 8) | b4;
-			return BitConverter.UInt64BitsToDouble((hi << 32) | lo);
+			double value = BitConverter.UInt64BitsToDouble((hi << 32) | lo);
+			return value < -1E+38 ? double.NaN : value;
 		}
 		catch (IndexOutOfRangeException)
 		{
