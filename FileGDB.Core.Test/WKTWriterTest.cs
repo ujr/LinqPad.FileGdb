@@ -20,9 +20,9 @@ public class WKTWriterTest
 		Assert.Equal("POINT (12.3 45.6)", buffer.ToString());
 
 		buffer.Clear();
-		writer.WritePoint(1.1, 2.2, 3.3, 99.9, 1);
+		writer.WritePoint(1.1, 2.2, 3.3);
 		writer.Flush();
-		Assert.Equal("POINT ZMID (1.1 2.2 3.3 99.9 1)", buffer.ToString());
+		Assert.Equal("POINT Z (1.1 2.2 3.3)", buffer.ToString());
 
 		buffer.Clear();
 		writer.WritePoint(1.1, 2.2, 3.3, 99.9);
@@ -33,6 +33,14 @@ public class WKTWriterTest
 		writer.WritePoint(1.1, 2.2);
 		writer.Flush();
 		Assert.Equal("POINT (1.1 2.2)", buffer.ToString());
+
+		buffer.Clear();
+		writer.BeginPoint(true, true, true);
+		writer.AddVertex(1.1, 2.2); // omit Z, M, ID
+		writer.EndShape();
+		writer.Flush();
+		// default values are provided, ID is omitted because EmitID is false:
+		Assert.Equal("POINT ZM (1.1 2.2 0 NaN)", buffer.ToString());
 
 		buffer.Clear();
 		writer.BeginPoint();
@@ -78,14 +86,14 @@ public class WKTWriterTest
 		Assert.Equal("BOX Z (1 2 400, 51 52 432)", buffer.ToString());
 
 		buffer.Clear();
-		writer.WriteBox(1, 2, 51, 42, idmin: 0, idmax: 3);
+		writer.WriteBox(1, 2, 51, 42, mmin: 55.25, mmax: 94.5);
 		writer.Flush();
-		Assert.Equal("BOX ID (1 2 0, 51 42 3)", buffer.ToString());
+		Assert.Equal("BOX M (1 2 55.25, 51 42 94.5)", buffer.ToString());
 
 		buffer.Clear();
-		writer.WriteBox(1, 2, 51, 42, 400, 432, 55.25, 94.5, 0, 3);
+		writer.WriteBox(1, 2, 51, 42, 400, 432, 55.25, 94.5);
 		writer.Flush();
-		Assert.Equal("BOX ZMID (1 2 400 55.25 0, 51 42 432 94.5 3)", buffer.ToString());
+		Assert.Equal("BOX ZM (1 2 400 55.25, 51 42 432 94.5)", buffer.ToString());
 	}
 
 	[Fact]
@@ -114,11 +122,11 @@ public class WKTWriterTest
 		writer.BeginMultipoint(hasZ: true);
 		writer.AddVertex(1.1, 1.2, 401.5);
 		writer.AddVertex(2.1, 2.2, 402.5);
-		writer.AddVertex(3.1, 3.2); // Z shall be NaN
+		writer.AddVertex(3.1, 3.2); // Z defaults to zero
 		writer.EndShape();
 
 		writer.Flush();
-		Assert.Equal("MULTIPOINT Z ((1.1 1.2 401.5), (2.1 2.2 402.5), (3.1 3.2 NaN))", buffer.ToString());
+		Assert.Equal("MULTIPOINT Z ((1.1 1.2 401.5), (2.1 2.2 402.5), (3.1 3.2 0))", buffer.ToString());
 
 		buffer.Clear();
 		writer.BeginMultipoint();
@@ -154,13 +162,13 @@ public class WKTWriterTest
 		buffer.Clear();
 		writer.BeginLineString(hasZ: true, hasID: true);
 		writer.NewPart(); // an allowed no-op
-		writer.AddVertex(0, 0, 0, id: 0);
-		writer.AddVertex(1, 1, 1, id: 1);
+		writer.AddVertex(0, 0, 0);
+		writer.AddVertex(1, 1, 1, id: 1); // id ignored because EmitID is false
 		Assert.Throws<InvalidOperationException>(() => writer.NewPart());
-		writer.AddVertex(1, 2, 3, id: 0);
+		writer.AddVertex(1, 2, 3);
 		writer.EndShape();
 		writer.Flush();
-		Assert.Equal("LINESTRING ZID (0 0 0, 1 1 1 1, 1 2 3)", buffer.ToString());
+		Assert.Equal("LINESTRING Z (0 0 0, 1 1 1, 1 2 3)", buffer.ToString());
 
 		buffer.Clear();
 		writer.BeginLineString(hasZ: true, hasM: true);
@@ -231,7 +239,7 @@ public class WKTWriterTest
 		writer.BeginPolygon(true, true, true);
 		writer.EndShape();
 		writer.Flush();
-		Assert.Equal("POLYGON ZMID EMPTY", buffer.ToString());
+		Assert.Equal("POLYGON ZM EMPTY", buffer.ToString());
 	}
 
 	[Fact]//[Fact(Skip="not yet implemented")]

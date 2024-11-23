@@ -45,7 +45,7 @@ public class ShapeBufferTest
 		Assert.True(buffer.IsEmpty);
 		Assert.Equal(1, buffer.NumPoints); // sic
 		Assert.Equal(1, buffer.NumParts); // sic
-		Assert.Equal("POINT ZMID EMPTY", buffer.ToWKT());
+		Assert.Equal("POINT ZM EMPTY", buffer.ToWKT());
 		buffer.QueryCoords(0, out var x, out var y, out var z, out var m, out int id);
 		Assert.True(double.IsNaN(x));
 		Assert.True(double.IsNaN(y));
@@ -70,7 +70,7 @@ public class ShapeBufferTest
 		Assert.Equal(6, buffer.NumPoints);
 		Assert.Equal(1, buffer.NumParts);
 		Assert.Equal(
-			"MULTILINESTRING ZMID ((2652556.4 1223107.7 0.0 NaN, 2652715.2 1223240.0 -12.0 NaN, 2652691.3 1223110.3 403.0 NaN 1, 2652852.7 1223247.9 404.0 NaN, 2652799.8 1223105.1 405.0 NaN, 2652979.7 1223237.3 0.0 NaN))",
+			"MULTILINESTRING ZM ((2652556.4 1223107.7 0 NaN, 2652715.2 1223240.0 -12 NaN, 2652691.3 1223110.3 403 NaN, 2652852.7 1223247.9 404 NaN, 2652799.8 1223105.1 405 NaN, 2652979.7 1223237.3 0 NaN))",
 			buffer.ToWKT(1));
 	}
 
@@ -91,7 +91,7 @@ public class ShapeBufferTest
 		Assert.Equal(1, buffer.NumParts);
 		// The curves (i.e., segment modifiers) don't show up in the WKT:
 		Assert.Equal(
-			"MULTILINESTRING ZM ((2652360.6 1222880.2 0.0 NaN, 2652564.3 1223025.7 0.0 NaN, 2652807.8 1223009.8 0.0 NaN, 2652982.4 1222888.1 0.0 NaN))",
+			"MULTILINESTRING ZM ((2652360.6 1222880.2 0 NaN, 2652564.3 1223025.7 0 NaN, 2652807.8 1223009.8 0 NaN, 2652982.4 1222888.1 0 NaN))",
 			buffer.ToWKT(1));
 	}
 
@@ -135,8 +135,15 @@ public class ShapeBufferTest
 		Assert.Equal(7, buffer.NumPoints);
 		Assert.Equal(7, buffer.NumParts);
 		Assert.Equal(
-			"MULTIPOINT ID ((2652527.3 1222814.0), (2652680.8 1222851.0), (2652794.5 1222795.5 1), (2652691.3 1222713.5 1), (2652466.5 1222583.8), (2652559.1 1222697.6 1), (2652657.0 1222538.8))",
+			"MULTIPOINT ((2652527.3 1222814.0), (2652680.8 1222851.0), (2652794.5 1222795.5), (2652691.3 1222713.5), (2652466.5 1222583.8), (2652559.1 1222697.6), (2652657.0 1222538.8))",
 			buffer.ToWKT(1));
+		int id;
+		buffer.QueryCoords(2, out _, out _, out _, out _, out id);
+		Assert.Equal(1, id);
+		buffer.QueryCoords(3, out _, out _, out _, out _, out id);
+		Assert.Equal(1, id);
+		buffer.QueryCoords(5, out _, out _, out _, out _, out id);
+		Assert.Equal(1, id);
 	}
 
 	[Fact]

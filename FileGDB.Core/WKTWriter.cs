@@ -23,7 +23,22 @@ public class WKTWriter : IDisposable
 		: this(new StringWriter(sb)) { }
 
 	// TODO public int MaxLineLength { get; set; }
+
+	/// <summary>
+	/// How many decimal digits to emit for ordinates (X,Y,Z,M).
+	/// A value x between 0 and 15 writes ordinates with .NET
+	/// format string "Fx", all other values with format "G".
+	/// Integer values always omit a decimal part, e.g., zero
+	/// is written as "0" and not as "0.0".
+	/// </summary>
 	public int DecimalDigits { get; set; }
+
+	/// <summary>
+	/// Whether to emit point IDs. If false (the default)
+	/// IDs are not written, even if ID values are provided.
+	/// </summary>
+	/// <remarks>Point IDs are not part of OGC WKT.</remarks>
+	public bool EmitID { get; set; }
 
 	public bool DefaultHasZ { get; set; }
 	public bool DefaultHasM { get; set; }
@@ -191,7 +206,7 @@ public class WKTWriter : IDisposable
 			WriteOrdinate(m);
 		}
 
-		if (CurrentHasID && id > 0)
+		if (CurrentHasID && EmitID)
 		{
 			_writer.Write(sep);
 			_writer.Write(id);
@@ -233,7 +248,7 @@ public class WKTWriter : IDisposable
 
 	public void WritePoint(double x, double y, double z = 0.0, double m = double.NaN, int id = 0)
 	{
-		bool hasZ = !double.IsNaN(z);
+		bool hasZ = z != 0.0 && !double.IsNaN(z);
 		bool hasM = !double.IsNaN(m);
 		bool hasID = id != 0;
 
@@ -250,8 +265,7 @@ public class WKTWriter : IDisposable
 	/// </summary>
 	public void WriteBox(double xmin, double ymin, double xmax, double ymax,
 		double zmin = double.NaN, double zmax = double.NaN,
-		double mmin = double.NaN, double mmax = double.NaN,
-		int? idmin = null, int? idmax = null)
+		double mmin = double.NaN, double mmax = double.NaN)
 	{
 		bool isEmpty = double.IsNaN(xmin) || double.IsNaN(xmax) ||
 		               double.IsNaN(ymin) || double.IsNaN(ymax) ||
@@ -259,9 +273,8 @@ public class WKTWriter : IDisposable
 
 		bool hasZ = !double.IsNaN(zmin) && !double.IsNaN(zmax);
 		bool hasM = !double.IsNaN(mmin) && !double.IsNaN(mmax);
-		bool hasID = idmin.HasValue && idmax.HasValue;
 
-		BeginShape(State.Box, hasZ, hasM, hasID);
+		BeginShape(State.Box, hasZ, hasM, false);
 
 		if (! isEmpty)
 		{
@@ -287,12 +300,6 @@ public class WKTWriter : IDisposable
 				WriteOrdinate(mmin);
 			}
 
-			if (hasID)
-			{
-				_writer.Write(sep);
-				_writer.Write(idmin);
-			}
-
 			_writer.Write(", ");
 
 			// maxima
@@ -311,12 +318,6 @@ public class WKTWriter : IDisposable
 			{
 				_writer.Write(sep);
 				WriteOrdinate(mmax);
-			}
-
-			if (hasID)
-			{
-				_writer.Write(sep);
-				_writer.Write(idmax);
 			}
 
 			_vertexIndex = 2; // to control EndShape
@@ -347,10 +348,10 @@ public class WKTWriter : IDisposable
 
 		_writer.Write(GetTag(state));
 
-		if (CurrentHasZ || CurrentHasM || CurrentHasID)
+		if (CurrentHasZ || CurrentHasM || CurrentHasID && EmitID)
 		{
 			_writer.Write(" ");
-			_writer.Write(GetDim(CurrentHasZ, CurrentHasM, CurrentHasID));
+			_writer.Write(GetDim(CurrentHasZ, CurrentHasM, CurrentHasID && EmitID));
 		}
 
 		_state = state;
@@ -363,9 +364,16 @@ public class WKTWriter : IDisposable
 
 	private void WriteOrdinate(double value)
 	{
-		if (double.IsNaN(value))
+		if (!double.IsFinite(value))
 		{
+			// NaN and positive/negative infinity
 			_writer.Write("NaN");
+		}
+		else if (IsInteger(value))
+		{
+			// Use format "G" on integers to avoid zero decimals with "Fx"
+			var text = value.ToString("G", _invariant);
+			_writer.Write(text);
 		}
 		else
 		{
@@ -373,6 +381,11 @@ public class WKTWriter : IDisposable
 			var text = value.ToString(format, _invariant);
 			_writer.Write(text);
 		}
+	}
+
+	private static bool IsInteger(double value)
+	{
+		return Math.Abs(value % 1) < double.Epsilon;
 	}
 
 	private static string GetOrdinateFormatString(int decimalDigits)
