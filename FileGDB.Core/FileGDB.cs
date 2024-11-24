@@ -470,7 +470,7 @@ public sealed class Table : IDisposable
 				// was 32bit until about year 2023; can be 64bit since ArcGIS Pro 3.2
 				return typeof(long);
 			case FieldType.Geometry:
-				return typeof(ShapeBuffer);
+				return typeof(GeometryBlob);
 			case FieldType.Blob:
 				return typeof(byte[]);
 			case FieldType.Raster:
@@ -595,23 +595,14 @@ public sealed class Table : IDisposable
 		return new BitArray(bytes.ToArray());
 	}
 
-	private static ShapeBuffer? ReadGeometryBlob(DataReader reader, GeometryDef geomDef)
+	private static GeometryBlob ReadGeometryBlob(DataReader reader, GeometryDef geomDef)
 	{
 		// assume reader positioned at start of field data
 		var size = reader.ReadVarUInt();
 		if (size > int.MaxValue)
 			throw Error("Geometry field too large for this API");
 		var bytes = reader.ReadBytes((int)size);
-
-		var r = new GeometryBlobReader(geomDef, bytes);
-		var shapeBuffer = r.ReadAsShapeBuffer();
-		if (!r.EntireBlobConsumed(out var bytesConsumed))
-			throw Error($"Geometry BLOB reader consumed only {bytesConsumed} bytes " +
-			            $"of a total of {bytes.Length} bytes in the BLOB");
-		
-		return shapeBuffer;
-//		var shape = r.ReadShape();
-//		return shape;
+		return new GeometryBlob(geomDef, bytes);
 	}
 
 	private static byte[] ReadBlobField(DataReader reader)
@@ -1193,7 +1184,7 @@ public abstract class RowsResult //: IEnumerable<int>, IEnumerator<int>
 
 	public abstract long OID { get; }
 
-	public abstract ShapeBuffer? Shape { get; } // null if no shape
+	public abstract GeometryBlob? Shape { get; } // null if no shape
 
 	public abstract object? GetValue(string fieldName);
 }
@@ -1235,7 +1226,7 @@ public class TableScanResult : RowsResult
 
 	public override long OID => _oid;
 
-	public override ShapeBuffer? Shape => GetShape();
+	public override GeometryBlob? Shape => GetShape();
 
 	public override object? GetValue(string? fieldName)
 	{
@@ -1280,14 +1271,14 @@ public class TableScanResult : RowsResult
 		return -1; // no shape field
 	}
 
-	private ShapeBuffer? GetShape()
+	private GeometryBlob? GetShape()
 	{
 		if (_shapeFieldIndex < 0)
 		{
 			return null; // table has no shape field
 		}
 
-		return _values[_shapeFieldIndex] as ShapeBuffer;
+		return _values[_shapeFieldIndex] as GeometryBlob;
 	}
 
 	private static bool HasGeometry(Table? table)

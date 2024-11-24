@@ -123,9 +123,9 @@ public class FileGdbDriver : DynamicDataContextDriver
 
 	public override void PreprocessObjectToWrite(ref object objectToWrite, ObjectGraphInfo info)
 	{
-		if (objectToWrite is Shape shape)
+		if (objectToWrite is GeometryBlob blob)
 		{
-			objectToWrite = ShapeProxy.Get(shape)!;
+			objectToWrite = Util.WithStyle(blob.ToString(), "font-weight:bold");
 		}
 		else if (objectToWrite is ShapeBuffer shapeBuffer)
 		{

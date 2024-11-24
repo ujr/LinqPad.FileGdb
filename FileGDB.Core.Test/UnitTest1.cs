@@ -208,7 +208,7 @@ namespace FileGDB.Core.Test
 
 			Assert.True(rows.HasShape);
 
-			var shapeBuffer = rows.Shape ?? throw new Exception("Shape is null");
+			var shapeBuffer = rows.Shape?.ShapeBuffer ?? throw new Exception("Shape is null");
 			Assert.Equal(GeometryType.Point, shapeBuffer.GeometryType);
 			Assert.False(shapeBuffer.HasZ);
 			Assert.False(shapeBuffer.HasM);
@@ -229,7 +229,7 @@ namespace FileGDB.Core.Test
 			Assert.Equal(12.3, value);
 
 			value = rows.GetValue("SHAPE");
-			Assert.IsType<ShapeBuffer>(value);
+			Assert.IsType<GeometryBlob>(value);
 
 			Assert.Throws<FileGDBException>(() => rows.GetValue("NoSuchFieldHere"));
 
