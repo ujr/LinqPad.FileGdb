@@ -37,12 +37,12 @@ public class GeometryBlobReader
 	/// Decode the given File GDB geometry blob into an Esri Shape Buffer
 	/// </summary>
 	/// <returns>An Esri Shape Buffer byte array (or null if the given blob is null)</returns>
-	public ShapeBuffer? ReadAsShapeBuffer()
+	public ShapeBuffer ReadAsShapeBuffer()
 	{
 		if (_blob.Length < 1)
 		{
-			// treat empty geometry blob as NULL
-			return null;
+			// treat empty geometry blob as ShapeType.Null:
+			return new ShapeBuffer(GetNullShapeBytes());
 		}
 
 		// first is geometry type:
@@ -55,7 +55,7 @@ public class GeometryBlobReader
 		switch (shapeType)
 		{
 			case ShapeType.Null:
-				return null;
+				return new ShapeBuffer(GetNullShapeBytes());
 			case ShapeType.Point:
 			case ShapeType.PointZ:
 			case ShapeType.PointM:
@@ -89,6 +89,13 @@ public class GeometryBlobReader
 		}
 
 		throw Error($"Unknown shape type: {shapeType}");
+	}
+
+	private static byte[] GetNullShapeBytes()
+	{
+		var bytes = new byte[4];
+		WriteInt32((int) ShapeType.Null, bytes, 0);
+		return bytes;
 	}
 
 	private byte[] ReadPoint(uint shapeType)
