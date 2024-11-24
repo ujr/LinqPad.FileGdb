@@ -258,8 +258,8 @@ public class GeometryBlobReader
 
 		bool hasZ = ShapeBuffer.GetHasZ(shapeType);
 		bool hasM = ShapeBuffer.GetHasM(shapeType);
-		bool hasCurves = ShapeBuffer.GetHasCurves(shapeType);
 		bool hasID = ShapeBuffer.GetHasID(shapeType);
+		bool mayHaveCurves = ShapeBuffer.GetMayHaveCurves(shapeType); // TODO unsure if 100% correct for GeomBlob
 
 		ulong vu = ReadVarUnsigned();
 		if (vu == 0)
@@ -273,8 +273,8 @@ public class GeometryBlobReader
 			throw Error($"Multipart geometry claims to have {vu} parts, which is more than it has points ({numPoints})");
 		int numParts = (int)vu;
 
-		int numCurves = 0;
-		if (hasCurves)
+		int numCurves = -1;
+		if (mayHaveCurves)
 		{
 			vu = ReadVarUnsigned();
 			if (vu > (uint)numPoints)
@@ -289,8 +289,7 @@ public class GeometryBlobReader
 		var bytes = new byte[length];
 		int offset = 0;
 
-		int type = ShapeBuffer.GetShapeType(shapeType, hasZ, hasM, hasID, hasCurves);
-		offset += WriteInt32(type, bytes, offset);
+		offset += WriteInt32(unchecked((int)shapeType), bytes, offset);
 
 		offset += WriteDouble(xmin, bytes, offset);
 		offset += WriteDouble(ymin, bytes, offset);
@@ -325,8 +324,9 @@ public class GeometryBlobReader
 			offset += CopyMs(numPoints, bytes, offset);
 		}
 
-		if (hasCurves)
+		if (numCurves >= 0)
 		{
+			offset += WriteInt32(numCurves, bytes, offset);
 			offset += CopyCurves(numCurves, bytes, offset);
 		}
 
@@ -348,6 +348,11 @@ public class GeometryBlobReader
 		if (hasZ) length += 8 + 8 + numPoints * 8; // zmin, zmax, z coords
 		if (hasM) length += 8 + 8 + numPoints * 8; // mmin, mmax, m coords
 		if (hasID) length += numPoints * 4; // id values (integers)
+
+		if (numCurves >= 0)
+		{
+			length += 4; // numCurves
+		}
 
 		if (numCurves > 0)
 		{

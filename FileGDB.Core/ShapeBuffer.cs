@@ -51,11 +51,13 @@ public class ShapeBuffer
 	public bool HasZ => GetHasZ(_shapeType);
 	public bool HasM => GetHasM(_shapeType);
 	public bool HasID => GetHasID(_shapeType);
-	public bool HasCurves => GetHasCurves(_shapeType);
+	//public bool HasCurves => GetMayHaveCurves(_shapeType);
 
 	public int NumPoints => GetPointCount();
 
 	public int NumParts => GetPartCount();
+
+	public int NumCurves => GetCurveCount();
 
 	public bool IsEmpty => GetIsEmpty();
 
@@ -382,7 +384,7 @@ public class ShapeBuffer
 				case GeometryType.Polygon:
 					sb.Append($", {NumPoints} point{(NumPoints == 1 ? "" : "s")}");
 					sb.Append($", {NumParts} part{(NumParts == 1 ? "" : "s")}");
-					if (HasCurves) sb.Append(", curves");
+					if (NumCurves > 0) sb.Append(", curves");
 					break;
 			}
 		}
@@ -500,6 +502,22 @@ public class ShapeBuffer
 			default:
 				throw new NotSupportedException($"Unknown geometry type: {GeometryType}");
 		}
+	}
+
+	private int GetCurveCount()
+	{
+		bool mayHaveCurves = GetMayHaveCurves(_shapeType);
+		if (!mayHaveCurves) return 0;
+
+		int numParts = NumParts;
+		int numPoints = NumPoints;
+
+		int offset = 4 + 32 + 4 + 4; // type, box, numParts, numPoints
+		offset += numParts * 4; // part start indices
+		offset += numPoints * 16; // XY coords
+		if (HasZ) offset += (2 + numPoints) * 8; // zmin, zmax, Z coords
+		if (HasM) offset += (2 + numPoints) * 8; // mmin, mmax, M coords
+		return ReadInt32(offset);
 	}
 
 	private int ReadInt32(int offset)
@@ -672,7 +690,7 @@ public class ShapeBuffer
 		return (shapeType & (uint)Flags.HasID) != 0;
 	}
 
-	public static bool GetHasCurves(uint shapeType)
+	public static bool GetMayHaveCurves(uint shapeType)
 	{
 		// special case mentioned in Ext Shp Buf Fmt p.4:
 		var basicType = (ShapeType)(shapeType & 255);
@@ -682,10 +700,17 @@ public class ShapeBuffer
 		if (basicType is ShapeType.GeneralPolygon or ShapeType.GeneralPolyline &&
 		    noModifierBits)
 		{
-			return true; // TODO also check numCurves? often the count is 0
+			return true;
 		}
 
-		return (shapeType & (uint)Flags.HasCurves) != 0;
+		var geomType = GetGeometryType(basicType);
+		// only Polyline and Polygon can have curves:
+		if (geomType is GeometryType.Polyline or GeometryType.Polygon)
+		{
+			return (shapeType & (uint)Flags.HasCurves) != 0;
+		}
+
+		return false;
 	}
 
 	public static int GetShapeType(uint shapeType, bool hasZ, bool hasM, bool hasID, bool hasCurves = false)

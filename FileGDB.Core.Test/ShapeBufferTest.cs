@@ -17,10 +17,10 @@ public class ShapeBufferTest
 		Assert.False(buffer.HasZ);
 		Assert.False(buffer.HasM);
 		Assert.False(buffer.HasID);
-		Assert.False(buffer.HasCurves);
 		Assert.True(buffer.IsEmpty);
 		Assert.Equal(1, buffer.NumPoints); // sic
 		Assert.Equal(1, buffer.NumParts); // sic
+		Assert.Equal(0, buffer.NumCurves);
 		Assert.Equal("POINT EMPTY", buffer.ToWKT());
 		buffer.QueryCoords(0, out var x, out var y, out var z, out var m, out int id);
 		Assert.True(double.IsNaN(x));
@@ -41,10 +41,10 @@ public class ShapeBufferTest
 		Assert.True(buffer.HasZ);
 		Assert.True(buffer.HasM);
 		Assert.True(buffer.HasID);
-		Assert.False(buffer.HasCurves);
 		Assert.True(buffer.IsEmpty);
 		Assert.Equal(1, buffer.NumPoints); // sic
 		Assert.Equal(1, buffer.NumParts); // sic
+		Assert.Equal(0, buffer.NumCurves);
 		Assert.Equal("POINT ZM EMPTY", buffer.ToWKT());
 		buffer.QueryCoords(0, out var x, out var y, out var z, out var m, out int id);
 		Assert.True(double.IsNaN(x));
@@ -65,10 +65,10 @@ public class ShapeBufferTest
 		Assert.True(buffer.HasZ);
 		Assert.True(buffer.HasM);
 		Assert.True(buffer.HasID);
-		Assert.False(buffer.HasCurves);
 		Assert.False(buffer.IsEmpty);
 		Assert.Equal(6, buffer.NumPoints);
 		Assert.Equal(1, buffer.NumParts);
+		Assert.Equal(0, buffer.NumCurves);
 		Assert.Equal(
 			"MULTILINESTRING ZM ((2652556.4 1223107.7 0 NaN, 2652715.2 1223240.0 -12 NaN, 2652691.3 1223110.3 403 NaN, 2652852.7 1223247.9 404 NaN, 2652799.8 1223105.1 405 NaN, 2652979.7 1223237.3 0 NaN))",
 			buffer.ToWKT(1));
@@ -85,10 +85,10 @@ public class ShapeBufferTest
 		Assert.True(buffer.HasZ);
 		Assert.True(buffer.HasM);
 		Assert.False(buffer.HasID);
-		Assert.True(buffer.HasCurves);
 		Assert.False(buffer.IsEmpty);
 		Assert.Equal(4, buffer.NumPoints);
 		Assert.Equal(1, buffer.NumParts);
+		Assert.Equal(2, buffer.NumCurves);
 		// The curves (i.e., segment modifiers) don't show up in the WKT:
 		Assert.Equal(
 			"MULTILINESTRING ZM ((2652360.6 1222880.2 0 NaN, 2652564.3 1223025.7 0 NaN, 2652807.8 1223009.8 0 NaN, 2652982.4 1222888.1 0 NaN))",
@@ -106,10 +106,10 @@ public class ShapeBufferTest
 		Assert.False(buffer.HasZ);
 		Assert.False(buffer.HasM);
 		Assert.False(buffer.HasID);
-		Assert.False(buffer.HasCurves);
 		Assert.False(buffer.IsEmpty);
 		Assert.Equal(1, buffer.NumPoints);
 		Assert.Equal(1, buffer.NumParts);
+		Assert.Equal(0, buffer.NumCurves);
 		Assert.Equal("POINT (2696602.9 1233151.7)", buffer.ToWKT(1));
 		buffer.QueryCoords(0, out double x, out double y, out double z, out double m, out int id);
 		Assert.Equal(2696602.9, x, 1);
@@ -130,10 +130,10 @@ public class ShapeBufferTest
 		Assert.False(buffer.HasZ);
 		Assert.False(buffer.HasM);
 		Assert.True(buffer.HasID);
-		Assert.False(buffer.HasCurves);
 		Assert.False(buffer.IsEmpty);
 		Assert.Equal(7, buffer.NumPoints);
 		Assert.Equal(7, buffer.NumParts);
+		Assert.Equal(0, buffer.NumCurves);
 		Assert.Equal(
 			"MULTIPOINT ((2652527.3 1222814.0), (2652680.8 1222851.0), (2652794.5 1222795.5), (2652691.3 1222713.5), (2652466.5 1222583.8), (2652559.1 1222697.6), (2652657.0 1222538.8))",
 			buffer.ToWKT(1));
