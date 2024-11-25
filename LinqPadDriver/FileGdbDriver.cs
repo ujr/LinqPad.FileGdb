@@ -125,15 +125,76 @@ public class FileGdbDriver : DynamicDataContextDriver
 	{
 		if (objectToWrite is GeometryBlob blob)
 		{
-			objectToWrite = Util.WithStyle(blob.ToString(), "font-weight:bold");
+			objectToWrite = FormatGeometryBlob(blob)!;
 		}
-		else if (objectToWrite is ShapeBuffer shapeBuffer)
+		//else if (objectToWrite is Shape shape)
+		//{
+		//	objectToWrite = ShapeProxy.Get(shape)!;
+		//}
+		//else if (objectToWrite is ShapeBuffer shapeBuffer)
+		//{
+		//	objectToWrite = new ShapeBufferProxy(shapeBuffer);
+		//	objectToWrite = shapeBuffer.ToString();
+		//	objectToWrite = Util.WithStyle(shapeBuffer.ToString(), "font-weight:bold");
+		//}
+		else if (objectToWrite is IEnumerable<byte> bytes)
 		{
-			objectToWrite = new ShapeBufferProxy(shapeBuffer);
-			objectToWrite = shapeBuffer.ToString();
-			objectToWrite = Util.WithStyle(shapeBuffer.ToString(), "font-weight:bold");
+			var parent = info.ParentHierarchy.FirstOrDefault();
+			// Show first few bytes (fewer if on ShapeBuffer, because there are many more properties)
+			int maxBytes = parent is ShapeBuffer ? 12 : 24;
+			var text = FormatBytes(bytes, maxBytes);
+			objectToWrite = Util.WithStyle(text, "color:green");
 		}
 		base.PreprocessObjectToWrite(ref objectToWrite, info);
+	}
+
+	private static object FormatGeometryBlob(GeometryBlob? blob)
+	{
+		if (blob is null)
+			throw new ArgumentNullException(nameof(blob));
+
+		try
+		{
+			var head = Util.ToHtmlString(FormatBytes(blob.Bytes, 12));
+			var type = Util.ToHtmlString(blob.ShapeBuffer.GeometryType.ToString());
+			return Util.RawHtml($"<font color='green'>{head}</font> <b>{type}</b>");
+		}
+		catch (Exception ex)
+		{
+			return Util.WithStyle($"Error: {ex.Message}", "color:Crimson");
+		}
+	}
+
+	private static string FormatBytes(IEnumerable<byte> bytes, int maxBytes)
+	{
+		if (bytes is null)
+			throw new ArgumentNullException(nameof(bytes));
+
+		var sb = new StringBuilder();
+		sb.Append('<');
+
+		using var enumerator = bytes.GetEnumerator();
+
+		for (int i = 0; i < maxBytes; i++)
+		{
+			if (!enumerator.MoveNext()) break;
+			if (i > 0) sb.Append(' ');
+			sb.AppendFormat("{0:X2}", enumerator.Current);
+		}
+
+		if (enumerator.MoveNext())
+		{
+			sb.Append(" ...");
+		}
+
+		sb.Append('>');
+
+		if (bytes is ICollection<byte> collection)
+		{
+			sb.AppendFormat(" ({0} bytes)", collection.Count);
+		}
+
+		return sb.ToString();
 	}
 
 	private class ShapeBufferProxy
