@@ -1,3 +1,5 @@
+using System;
+
 namespace FileGDB.Core;
 
 /// <remarks>Coordinate storage information such as False Origin and

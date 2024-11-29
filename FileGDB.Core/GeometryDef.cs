@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace FileGDB.Core;
 
 public class GeometryDef
