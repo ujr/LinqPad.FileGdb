@@ -4,6 +4,30 @@
     <TargetFramework>net6.0</TargetFramework>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!--Since we have only one TargetFramework (no dual-build), don't append it:-->
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
+
+  <PropertyGroup>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Title>Read from a File Geodatabase (FileGDB, FGDB)</Title>
+    <Authors>ujr</Authors>
+    <Version>0.1.0-alpha1</Version>
+    <AssemblyVersion>0.1.0.1</AssemblyVersion>
+    <FileVersion>0.1.0.1</FileVersion>
+    <PackageTags>FGDB;FileGDB;Esri;GIS</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <Description>
+      Allows limited read-only access to the File Geodatabase
+      (aka File GDB or FGDB). No dependency beyond .NET.
+    </Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="README.md">
+      <Pack>True</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+  </ItemGroup>
 
 </Project>
