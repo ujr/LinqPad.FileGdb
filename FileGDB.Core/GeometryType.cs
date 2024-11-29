@@ -2,9 +2,9 @@ namespace FileGDB.Core;
 
 /// <remarks>
 /// Names and values as for ArcObjects esriGeometryType constants.
-/// The FileGDB API's GeometryType enum only has Null, Point, Multipoint,
-/// Polyline, Polygon, MultiPatch (with the same values as here), which
-/// are the "high-level geometries" (the others are components).
+/// The File Geodatabase API's GeometryType enum only has Null, Point,
+/// Multipoint, Polyline, Polygon, MultiPatch (with the same values
+/// as here), which are the "high-level geometries".
 /// </remarks>
 public enum GeometryType
 {

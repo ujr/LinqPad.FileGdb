@@ -6,8 +6,8 @@ using System.Text;
 namespace FileGDB.Core;
 
 /// <summary>
-/// The original bytes stored in the File GDB that represent a geometry.
-/// Can translate the same geometry to an Esri Shape Buffer.
+/// The original bytes stored in the File Geodatabase that represent
+/// a geometry. Can translate the same geometry to an Esri Shape Buffer.
 /// </summary>
 public class GeometryBlob
 {

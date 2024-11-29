@@ -10,7 +10,7 @@ public class FieldInfo
 	public bool Nullable { get; set; }
 	public int Length { get; set; }
 	// Precision and Scale are always zero for File GDBs
-	// Required? Editable? Domain? DomainFixed? (seem not stored in FGDB?)
+	// Required? Editable? Domain? DomainFixed? (seem not stored in FGDB)
 	// DefaultValue?
 	public GeometryDef? GeometryDef { get; set; }
 	public int? RasterType { get; set; } // TODO eventually "RasterDef" à la GeometryDef

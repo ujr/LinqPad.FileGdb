@@ -25,8 +25,8 @@ public class GeometryBlobReader
 	private double ZScale => _geomDef.ZScale;
 
 	private bool HasM => _geomDef.HasM;
-	private double MOrigin => _geomDef.ZOrigin;
-	private double MScale => _geomDef.ZScale;
+	private double MOrigin => _geomDef.MOrigin;
+	private double MScale => _geomDef.MScale;
 
 	public bool EntireBlobConsumed(out int bytesConsumed)
 	{
@@ -255,7 +255,7 @@ public class GeometryBlobReader
 		// GeometryBlob (input):
 		// numPoints (vu)
 		// numParts (vu)
-		// numCurves (vu) if general type and HasCurves -- TODO or as in Ext Shp Buf?
+		// numCurves (vu) if general type and MayHaveCurves -- TODO or as in Ext Shp Buf?
 		// box (4x vu)
 		// perPartCounts (numParts-1 vu; num points in last part is not stored)
 		// XY coords
@@ -373,13 +373,13 @@ public class GeometryBlobReader
 			// Skip per part counts:
 			for (int k = 0; k < numParts - 1; k++)
 			{
-				ulong dummy = ReadVarUnsigned();
+				_ = ReadVarUnsigned();
 			}
 
 			// Skip XY coordinates:
 			for (var j = 0; j < 2 * numPoints; j++)
 			{
-				long dummy = ReadVarInteger();
+				_ = ReadVarInteger();
 			}
 
 			// Skip Z coordinates:
@@ -387,7 +387,7 @@ public class GeometryBlobReader
 			{
 				for (int j = 0; j < numPoints; j++)
 				{
-					long dummy = ReadVarInteger();
+					_ = ReadVarInteger();
 				}
 			}
 
@@ -408,7 +408,7 @@ public class GeometryBlobReader
 			// to get to the segment modifiers:
 			for (int j = 0; j < numCurves; j++)
 			{
-				var startIndex = ReadVarUnsigned(); // startIndex
+				_ = ReadVarUnsigned(); // startIndex
 				var segmentType = ReadVarUnsigned();
 
 				length += 4 + 4; // startIndex and curveType (both I32)
@@ -821,17 +821,17 @@ public class GeometryBlobReader
 		return BitConverter.Int64BitsToDouble((hi << 32) | lo);
 	}
 
-	private FormatException Error(string? message)
+	private FileGDBException Error(string? message)
 	{
-		return new FormatException(message ?? "Malformed geometry BLOB");
+		return new FileGDBException(message ?? "Malformed geometry BLOB");
 	}
 
-	private FormatException ReadingBeyondBlob()
+	private FileGDBException ReadingBeyondBlob()
 	{
 		return Error("Reading beyond the end of the geometry blob");
 	}
 
-	private FormatException VarIntOverflow()
+	private FileGDBException VarIntOverflow()
 	{
 		return Error("File GDB VarInt overflows a 64bit integer");
 	}

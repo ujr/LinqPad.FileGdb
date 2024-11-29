@@ -131,7 +131,12 @@ public class TYPENAME
 		public bool UseUtf8 => Table.UseUtf8;
 		public long MaxOID => Table.MaxObjectID;
 		public int MaxEntrySize => Table.MaxEntrySize;
+		public int OffsetSize => Table.OffsetSize;
+		public long DataFileSize => Table.FileSizeBytes;
+		public string DataFileName => Table.GetDataFilePath();
+		public string IndexFileName => Table.GetIndexFilePath();
 		public IReadOnlyList<FileGDB.Core.FieldInfo> Fields => Table.Fields;
+		public IReadOnlyList<FileGDB.Core.IndexInfo> Indexes => Table.Indexes;
 
 		protected FileGDB.Core.Table Table =>
 			_table ?? throw new InvalidOperationException("This table wrapper has not been initialized");

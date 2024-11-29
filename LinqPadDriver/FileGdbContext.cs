@@ -183,6 +183,7 @@ public class FileGdbContext : IDisposable
 		[PublicAPI] public bool UseUtf8 => _table.UseUtf8;
 		[PublicAPI] public long MaxOID => _table.MaxObjectID;
 		[PublicAPI] public int MaxEntrySize => _table.MaxEntrySize;
+		[PublicAPI] public long FileSize => _table.FileSizeBytes;
 		[PublicAPI] public IReadOnlyList<FieldInfo> Fields => _table.Fields;
 
 		IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();

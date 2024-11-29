@@ -56,8 +56,8 @@ public class FileGdbDriver : DynamicDataContextDriver
 	{
 		//Debugger.Launch();
 
-		var assembly = Assembly.GetExecutingAssembly();
-		var dllFileName = Path.GetFileName(assembly.Location);
+		//var assembly = Assembly.GetExecutingAssembly();
+		//var dllFileName = Path.GetFileName(assembly.Location);
 		// Note: assembly.Location is in a temp folder; use file name only!
 		//cxInfo.CustomTypeInfo.CustomAssemblyPath = dllFileName;
 		//cxInfo.CustomTypeInfo.CustomTypeName = typeof(FileGdbContext).FullName;
@@ -125,17 +125,11 @@ public class FileGdbDriver : DynamicDataContextDriver
 	{
 		if (objectToWrite is GeometryBlob blob)
 		{
-			objectToWrite = FormatGeometryBlob(blob)!;
+			objectToWrite = FormatGeometryBlob(blob);
 		}
 		//else if (objectToWrite is Shape shape)
 		//{
 		//	objectToWrite = ShapeProxy.Get(shape)!;
-		//}
-		//else if (objectToWrite is ShapeBuffer shapeBuffer)
-		//{
-		//	objectToWrite = new ShapeBufferProxy(shapeBuffer);
-		//	objectToWrite = shapeBuffer.ToString();
-		//	objectToWrite = Util.WithStyle(shapeBuffer.ToString(), "font-weight:bold");
 		//}
 		else if (objectToWrite is IEnumerable<byte> bytes)
 		{
@@ -197,35 +191,7 @@ public class FileGdbDriver : DynamicDataContextDriver
 		return sb.ToString();
 	}
 
-	private class ShapeBufferProxy
-	{
-		private ShapeBuffer ShapeBuffer { get; }
-
-		public ShapeBufferProxy(ShapeBuffer shapeBuffer)
-		{
-			ShapeBuffer = shapeBuffer ?? throw new ArgumentNullException(nameof(shapeBuffer));
-		}
-
-		public GeometryType Type => ShapeBuffer.GeometryType;
-		public ShapeFlags Flags => GetFlags(ShapeBuffer);
-		public bool? IsEmpty => ShapeBuffer.IsEmpty;
-
-		private static ShapeFlags GetFlags(ShapeBuffer shapeBuffer)
-		{
-			var flags = ShapeFlags.None;
-
-			if (shapeBuffer.HasZ) flags |= ShapeFlags.HasZ;
-			if (shapeBuffer.HasM) flags |= ShapeFlags.HasM;
-			if (shapeBuffer.HasID) flags |= ShapeFlags.HasID;
-
-			return flags;
-		}
-
-		public override string ToString()
-		{
-			return ShapeBuffer.GeometryType.ToString();
-		}
-	}
+	#region ShapeProxy for Dump() display
 
 	private class ShapeProxy
 	{
@@ -313,56 +279,7 @@ public class FileGdbDriver : DynamicDataContextDriver
 		public object Parts => Util.OnDemand(PartsLabel, () => ((PolygonShape)Shape).Parts);
 	}
 
-	//public override void DisplayObjectInGrid(object objectToDisplay, GridOptions options)
-	//{
-	//	if (objectToDisplay is FileGdbContext.RowProxy row)
-	//	{
-	//		Debugger.Launch();
-	//		dynamic obj = new ExpandoObject();
-	//		var dict = (IDictionary<string, object?>)obj;
-
-	//		foreach (var foo in row.GetNames().Zip(row.GetValues()))
-	//		{
-	//			dict.Add(foo.First, foo.Second);
-	//		}
-
-	//		objectToDisplay = obj;
-	//	}
-
-	//	base.DisplayObjectInGrid(objectToDisplay, options);
-	//}
-
-	//public override List<ExplorerItem> GetSchema(IConnectionInfo cxInfo, Type customType)
-	//{
-	//	var gdbFolderPath = cxInfo.GetGdbFolderPath();
-	//	var gdb = gdbFolderPath is null ? null : Core.FileGDB.Open(gdbFolderPath);
-
-	//	var folderPathItem = new ExplorerItem("FolderPath", ExplorerItemKind.Property, ExplorerIcon.Parameter)
-	//	{
-	//		IsEnumerable = false,
-	//		DragText = nameof(FileGdbContext.FolderPath),
-	//		ToolTipText = gdb?.FolderPath ?? "Full path to the .gdb/ folder"
-	//	};
-
-	//	var systemItem = new ExplorerItem("System", ExplorerItemKind.Schema, ExplorerIcon.Schema)
-	//	{
-	//		Children = GetSystemTableItems(),
-	//		ToolTipText = "Geodatabase System Tables"
-	//	};
-
-	//	var systemTables = systemItem.Children.Select(item => item.Text).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-	//	var tablesItem = new ExplorerItem("Tables", ExplorerItemKind.Schema, ExplorerIcon.Schema)
-	//	{
-	//		Children = GetTableItems(gdb, name => !systemTables.Contains(name)),
-	//		ToolTipText = "User-defined tables (all but system tables)"
-	//	};
-
-	//	return new List<ExplorerItem>
-	//	{
-	//		folderPathItem, systemItem, tablesItem
-	//	};
-	//}
+	#endregion
 
 	public override List<ExplorerItem> GetSchemaAndBuildAssembly(
 		IConnectionInfo cxInfo, AssemblyName assemblyToBuild,
@@ -400,8 +317,9 @@ public class FileGdbDriver : DynamicDataContextDriver
 		};
 
 		var source = MakeContextSourceCode(nameSpace, typeName, gdb);
+		var outputFile = assemblyToBuild.CodeBase ?? throw new Exception($"No CodeBase on {nameof(assemblyToBuild)}");
 
-		Compile(source, assemblyToBuild.CodeBase, cxInfo);
+		Compile(source, outputFile, cxInfo);
 
 		var items = new List<ExplorerItem>
 		{
@@ -412,9 +330,9 @@ public class FileGdbDriver : DynamicDataContextDriver
 
 		if (debugMode)
 		{
-			items.Add(new($"NameSpace={nameSpace}", ExplorerItemKind.Schema, ExplorerIcon.Box));
-			items.Add(new($"TypeName={typeName}", ExplorerItemKind.Schema, ExplorerIcon.Box));
-			items.Add(new("SourceCode", ExplorerItemKind.Property, ExplorerIcon.Box)
+			items.Add(new ExplorerItem($"NameSpace={nameSpace}", ExplorerItemKind.Schema, ExplorerIcon.Box));
+			items.Add(new ExplorerItem($"TypeName={typeName}", ExplorerItemKind.Schema, ExplorerIcon.Box));
+			items.Add(new ExplorerItem("SourceCode", ExplorerItemKind.Property, ExplorerIcon.Box)
 			{
 				IsEnumerable = false,
 				DragText = source,
@@ -549,7 +467,7 @@ public class $$TYPENAME$$
     }
   }
 
-  public abstract class TableBase
+  public abstract class TableBase // TODO move to compiled code (no need to generate)
   {
     private FileGDB.Core.Table? _table;
     protected bool DebugMode { get; private set; }
@@ -570,7 +488,12 @@ public class $$TYPENAME$$
     public bool UseUtf8 => Table.UseUtf8;
     public long MaxOID => Table.MaxObjectID;
     public int MaxEntrySize => _table.MaxEntrySize;
+    public int OffsetSize => Table.OffsetSize;
+    public long DataFileSize => Table.FileSizeBytes;
+    public string DataFilePath => Table.GetDataFilePath();
+    public string IndexFilePath => Table.GetIndexFilePath();
     public IReadOnlyList<FileGDB.Core.FieldInfo> Fields => Table.Fields;
+    public IReadOnlyList<FileGDB.Core.IndexInfo> Indexes => Table.Indexes;
 
     protected FileGDB.Core.Table Table =>
       _table ?? throw new InvalidOperationException(""This table wrapper has not been initialized"");
@@ -662,7 +585,7 @@ public class $$TABLENAME$$Table : TableBase, IEnumerable<$$TABLENAME$$Table.Row>
 					.Replace("$$PERFIELDPROPERTIES$$", fieldProperties.ToString());
 				tableClasses.AppendLine(perTableCode);
 			}
-			catch (IOException ex)
+			catch (IOException)
 			{
 				// Could not open table: assume it has no fields and generate
 				// code accordingly; the error will pop up again when enumerated

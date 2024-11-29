@@ -4,12 +4,11 @@ namespace FileGDB.Core;
 
 public class GeometryDef
 {
-	public GeometryDef(GeometryType type, bool hasZ = false, bool hasM = false, bool hasID = false)
+	public GeometryDef(GeometryType type, bool hasZ = false, bool hasM = false)
 	{
 		GeometryType = type;
 		HasZ = hasZ;
 		HasM = hasM;
-		HasID = hasID;
 		Grid = new GridIndex();
 		Extent = new Envelope();
 	}
@@ -38,8 +37,6 @@ public class GeometryDef
 	public double MOrigin { get; set; }
 	public double MScale { get; set; }
 	public double MTolerance { get; set; }
-
-	public bool HasID { get; set; }
 
 	public Envelope Extent { get; }
 

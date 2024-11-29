@@ -6,7 +6,7 @@ namespace FileGDB.Core;
 
 /// <summary>
 /// Wrapper around a <see cref="Stream"/> that can read
-/// basic data types found in the FileGDB spec.
+/// the basic data types found in a File Geodatabase.
 /// </summary>
 /// <remarks>NOT thread-safe!</remarks>
 internal class DataReader : IDisposable
@@ -126,12 +126,7 @@ internal class DataReader : IDisposable
 	{
 		long lo = _reader.ReadUInt16();
 		long hi = _reader.ReadUInt32();
-		return (hi << 32) | (lo & 65535);
-
-		// Even Rouault:
-		// lo = read_uint8(f)
-		// hi = read_uint40(f)
-		// return lo | (hi << 8)
+		return (hi << 16) | (lo & 65535);
 	}
 
 	public ulong ReadVarUInt()
@@ -139,14 +134,13 @@ internal class DataReader : IDisposable
 		ulong result = 0;
 		int shift = 0;
 
-		// TODO check for overflow
-
 		while (true)
 		{
 			byte b = _reader.ReadByte();
 			result |= (ulong)(b & 127) << shift;
 			if ((b & 128) == 0) break;
-			shift += 7;
+			if (shift <= 49) shift += 7;
+			else throw VarIntOverflow();
 		}
 
 		return result;
@@ -160,5 +154,10 @@ internal class DataReader : IDisposable
 	public void Dispose()
 	{
 		_stream.Dispose();
+	}
+
+	private static FileGDBException VarIntOverflow()
+	{
+		return new FileGDBException("File GDB VarInt overflows a 64bit integer");
 	}
 }

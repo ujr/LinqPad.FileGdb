@@ -10,10 +10,6 @@ using System.Text;
 
 namespace FileGDB.Core;
 
-// Flat list of tables (.gdbtable files)
-// First such table contains catalog (list of tables)
-// 3 known versions: 9.x (very old), 10.x (current), 10.x with 64bit OIDs (since Pro 3.2)
-
 public sealed class FileGDB : IDisposable
 {
 	private readonly object _syncLock = new();
@@ -168,7 +164,8 @@ public sealed class FileGDB : IDisposable
 			{ "GDB_ItemRelationshipTypes", "The GDB_ItemRelationshipTypes system table" },
 			{ "GDB_ReplicaLog", "The ReplicaLog system table (may not exist)" },
 			{ "GDB_EditingTemplates", "new with Pro 3.2" },
-			{ "GDB_EditingTemplateRelationships", "new with Pro 3.2" }
+			{ "GDB_EditingTemplateRelationships", "new with Pro 3.2" },
+			{ "GDB_ReplicaChanges", "Replica changes, only exists if this GDB is a replica" }
 		};
 
 		// TODO Version 9.2 File GDBs had many more system tables
@@ -212,7 +209,7 @@ public sealed class Table : IDisposable
 {
 	private DataReader? _dataReader;
 	private DataReader? _indexReader;
-	private BitArray? _blockMap; // pabyTablXBlockMap chez Even Rouault
+	private BitArray? _blockMap;
 	private IReadOnlyList<IndexInfo>? _indexes;
 
 	public string BaseName { get; } // "aXXXXXXXX"
@@ -225,11 +222,10 @@ public sealed class Table : IDisposable
 	public GeometryType GeometryType { get; private set; }
 	public bool HasZ { get; private set; }
 	public bool HasM { get; private set; }
-	public bool HasID { get; private set; }
 	public bool UseUtf8 { get; private set; }
 	public IReadOnlyList<FieldInfo> Fields { get; private set; }
 	public int MaxEntrySize { get; private set; } // max(row sizes and field description section)
-	public long MaxObjectID { get; private set; } // TODO unsure (experiment with deleting rows)
+	public long MaxObjectID { get; private set; }
 	public long FileSizeBytes { get; private set; }
 	public IReadOnlyList<IndexInfo> Indexes => _indexes ??= LoadIndexes();
 
@@ -240,23 +236,35 @@ public sealed class Table : IDisposable
 		if (baseName.Length != 9 || (baseName[0] != 'a' && baseName[0] != 'A'))
 			throw new ArgumentException("Malformed table file name", nameof(baseName));
 
-		FolderPath = folderPath ?? throw new ArgumentNullException(nameof(folderPath));
 		BaseName = baseName;
+		FolderPath = folderPath ?? throw new ArgumentNullException(nameof(folderPath));
 
 		Fields = new ReadOnlyCollection<FieldInfo>(Array.Empty<FieldInfo>());
+	}
+
+	public string GetDataFilePath()
+	{
+		var dataFileName = Path.ChangeExtension(BaseName, ".gdbtable");
+		var dataFilePath = Path.Combine(FolderPath, dataFileName);
+		return dataFilePath;
+	}
+
+	public string GetIndexFilePath()
+	{
+		var indexFileName = Path.ChangeExtension(BaseName, ".gdbtablx");
+		var indexFilePath = Path.Combine(FolderPath, indexFileName);
+		return indexFilePath;
 	}
 
 	public static Table Open(string baseName, string folderPath)
 	{
 		var table = new Table(baseName, folderPath);
 
-		var dataFileName = Path.ChangeExtension(baseName, ".gdbtable");
-		var dataFilePath = Path.Combine(folderPath, dataFileName);
-		var dataStream = new FileStream(dataFilePath, FileMode.Open, FileAccess.Read);
+		var dataPath = table.GetDataFilePath();
+		var dataStream = new FileStream(dataPath, FileMode.Open, FileAccess.Read);
 
-		var indexFileName = Path.ChangeExtension(baseName, ".gdbtablx");
-		var indexFilePath = Path.Combine(folderPath, indexFileName);
-		var indexStream = new FileStream(indexFilePath, FileMode.Open, FileAccess.Read);
+		var indexPath = table.GetIndexFilePath();
+		var indexStream = new FileStream(indexPath, FileMode.Open, FileAccess.Read);
 
 		table.Open(dataStream, indexStream);
 
@@ -321,39 +329,48 @@ public sealed class Table : IDisposable
 		return new TableScanResult(this);
 	}
 
-	/// <returns>Size in bytes, or -1 if no such row</returns>
-	public long GetRowSize(int oid)
+	/// <summary>
+	/// Read raw bytes for the row with the given <paramref name="oid"/>.
+	/// Never overflows the given <paramref name="bytes"/> array, but
+	/// may not read all bytes of the row.
+	/// </summary>
+	/// <param name="oid">The OID of the row to read</param>
+	/// <param name="bytes">Where to put the bytes read for the row;
+	/// can be null or smaller than the size required to read all bytes</param>
+	/// <param name="bytesOffset">Optional start offset into <paramref name="bytes"/></param>
+	/// <returns>Size in bytes of this row</returns>
+	public long ReadRowBytes(long oid, byte[]? bytes = null, int bytesOffset = 0)
 	{
 		if (_dataReader is null)
 			throw new ObjectDisposedException(GetType().Name);
 
-		var offset = GetRowOffset(oid);
-		if (offset <= 0) return -1; // no such oid (or deleted)
+		var rowOffset = GetRowOffset(oid);
+		if (rowOffset <= 0) return -1; // no such oid (or deleted)
 
-		_dataReader.Seek(offset);
+		_dataReader.Seek(rowOffset);
 
-		long rowDataSize = _dataReader.ReadUInt32();
+		uint rowDataSize = _dataReader.ReadUInt32();
+		if (rowDataSize > int.MaxValue)
+			throw new NotSupportedException(
+				$"Record with OID {oid} is {rowDataSize} bytes, which is too big for this API");
+
+		if (bytes is not null)
+		{
+			_dataReader.ReadBytes((int)rowDataSize, bytes, bytesOffset);
+		}
 
 		return rowDataSize;
 	}
 
-	///// <returns>Row data bytes, or null if no such row</returns>
-	//public byte[]? ReadRowBytes(int oid)
-	//{
-	//	if (_dataReader is null)
-	//		throw new ObjectDisposedException(GetType().Name);
-
-	//	var offset = GetRowOffset(oid);
-	//	if (offset <= 0) return null;
-
-	//	_dataReader.Seek(offset);
-
-	//	byte[]? buffer = null;
-	//	uint size = ReadRowBlob(_dataReader, offset, ref buffer);
-
-	//	return buffer;
-	//}
-
+	/// <summary>
+	/// Read the values for the row with the given <paramref name="oid"/>.
+	/// </summary>
+	/// <param name="oid">The OID of the row to read</param>
+	/// <param name="values">An optional array to receive the row's
+	/// field values; if null, a new array will be allocated; if too
+	/// small, not all fields will be read.</param>
+	/// <returns>An array of field values read from the row,
+	/// or null if there is no row with the given OID</returns>
 	public object?[]? ReadRow(long oid, object?[]? values = null)
 	{
 		if (_dataReader is null)
@@ -452,7 +469,6 @@ public sealed class Table : IDisposable
 	/// <summary>
 	/// Get the CLR data type used for the given field type.
 	/// </summary>
-	// TODO shouldn't this be on FileGDB class? on the other hand, it corresponds with ReadRow above
 	public static Type GetDataType(FieldType fieldType)
 	{
 		switch (fieldType)
@@ -565,22 +581,6 @@ public sealed class Table : IDisposable
 		return result;
 	}
 
-	//private static uint ReadRowBlob(DataReader dataReader, long rowDataOffset, ref byte[]? buffer)
-	//{
-	//	dataReader.Seek(rowDataOffset);
-
-	//	var rowBlobSize = dataReader.ReadUInt32();
-
-	//	if (buffer is null || buffer.LongLength < rowBlobSize)
-	//	{
-	//		buffer = new byte[rowBlobSize];
-	//	}
-
-	//	dataReader.ReadBytes((int) rowBlobSize, buffer);
-
-	//	return rowBlobSize;
-	//}
-
 	private static BitArray ReadNullFlags(DataReader dataReader, IReadOnlyList<FieldInfo> fields)
 	{
 		// assume reader positioned at row's null flags
@@ -628,15 +628,16 @@ public sealed class Table : IDisposable
 		var bytes = reader.ReadBytes((int)size);
 		var text = isUtf8
 			? Encoding.UTF8.GetString(bytes)
-			: throw new NotImplementedException(); // what's the encoding?
+			: throw new NotImplementedException("Non-UTF8 text fields not implemented"); // what's the encoding?
 		return text;
 	}
 
 	private static Guid ReadGuidField(DataReader reader)
 	{
 		var bytes = reader.ReadBytes(16);
-		// TODO Test if bytes from FGDB are in the order expected by Guid()
 		// FGDB: b3 b2 b1 b0   b5 b4   b7 b6   b8 b9 b10 b11 b12 b13 b14 b15 b16
+		// Conveniently, the FGDB stores the GUID's bytes in the order expected
+		// by the Guid class constructor:
 		return new Guid(bytes);
 	}
 
@@ -750,17 +751,17 @@ public sealed class Table : IDisposable
 	{
 		// assume reader positioned after version field
 
-		var n1024Blocks = indexReader.ReadInt32(); // TODO rename num1KBlocks
+		var num1KBlocks = indexReader.ReadInt32();
 		var unknown = indexReader.ReadInt32(); // always 0? MSB of previous field?
 
 		OffsetSize = indexReader.ReadInt32(); // 4, 5, or 6 (bytes per offset)
 		if (OffsetSize is not 4 and not 5 and not 6)
 			throw Error($"Offset size {OffsetSize} is out of range; expect 4 or 5 or 6 (bytes per offset)");
 
-		if (n1024Blocks > 0)
+		if (num1KBlocks > 0)
 		{
 			// Seek to trailer section:
-			indexReader.Seek(16 + 1024 * n1024Blocks * OffsetSize);
+			indexReader.Seek(16 + 1024 * num1KBlocks * OffsetSize);
 
 			var numRows = indexReader.ReadInt64(); // including deleted rows!
 
@@ -819,7 +820,7 @@ public sealed class Table : IDisposable
 		GeometryType = (GeometryType)(flags & 255);
 		HasZ = (flags & (1 << 31)) != 0;
 		HasM = (flags & (1 << 30)) != 0;
-		HasID = (flags & (1 << 28)) != 0; // TODO this is just a guess
+		//HasID = (flags & (1 << 28)) != 0; // I think this is not on the table, only in the geom
 
 		// Field descriptions:
 		var fields = new List<FieldInfo>(Math.Max(0, FieldCount));
@@ -833,7 +834,7 @@ public sealed class Table : IDisposable
 
 			var type = (FieldType)reader.ReadByte();
 
-			var field = ReadFieldInfo(name, alias, type, reader, GeometryType, HasZ, HasM, HasID);
+			var field = ReadFieldInfo(name, alias, type, reader, GeometryType, HasZ, HasM);
 
 			fields.Add(field); // here we also add the OID field
 		}
@@ -845,7 +846,7 @@ public sealed class Table : IDisposable
 
 	private static FieldInfo ReadFieldInfo(
 		string name, string alias, FieldType type, DataReader reader,
-		GeometryType geometryType, bool tableHasZ, bool tableHasM, bool tableHasID)
+		GeometryType geometryType, bool tableHasZ, bool tableHasM)
 	{
 		byte flag, size;
 		var field = new FieldInfo(name, alias, type);
@@ -859,7 +860,7 @@ public sealed class Table : IDisposable
 				break;
 
 			case FieldType.Geometry:
-				var geomDef = new GeometryDef(geometryType, tableHasZ, tableHasM, tableHasID);
+				var geomDef = new GeometryDef(geometryType, tableHasZ, tableHasM);
 				_ = reader.ReadByte(); // unknown (always 0?)
 				flag = reader.ReadByte();
 				field.Nullable = (flag & 1) != 0;
@@ -939,13 +940,10 @@ public sealed class Table : IDisposable
 				field.Nullable = (flag & 1) != 0;
 				var len = reader.ReadVarUInt();
 				if (len > 0 && (flag & 4) != 0)
-					reader.SkipBytes(len); // default value
-				/* TODO
-				   default_value_length = read_varuint(f)
-				   print('default_value_length = %d' % default_value_length)
-				   if (flag & 4) != 0 and default_value_length > 0:
-				       print('default value: %s' % f.read(default_value_length))
-				 */
+				{
+					var deft = reader.ReadBytes((int)len);
+					//reader.SkipBytes(len); // default value TODO record in FieldInfo? how encoded?
+				}
 				break;
 
 			case FieldType.Blob:
@@ -983,9 +981,10 @@ public sealed class Table : IDisposable
 				flag = reader.ReadByte();
 				field.Nullable = (flag & 1) != 0;
 				var dvl = reader.ReadByte();
-				if ((flag & 4) != 0)
+				if (dvl > 0 && (flag & 4) != 0)
 				{
-					reader.SkipBytes(dvl); // default value (skip for now)
+					var deflt = reader.ReadBytes(dvl);
+					//reader.SkipBytes(dvl); // default value (skip for now)
 				}
 				break;
 
@@ -993,8 +992,8 @@ public sealed class Table : IDisposable
 				_ = reader.ReadByte();
 				flag = reader.ReadByte();
 				field.Nullable = (flag & 1) != 0;
-				var nbcar = reader.ReadByte();
-				var rasterColumn = reader.ReadUtf16(nbcar);
+				var numChars = reader.ReadByte();
+				var rasterColumn = reader.ReadUtf16(numChars);
 				wktLen = reader.ReadInt16();
 				wkt = reader.ReadUtf16(wktLen / 2); // in chars
 				var magic3 = reader.ReadByte();
@@ -1030,58 +1029,6 @@ public sealed class Table : IDisposable
 				field.RasterType = reader.ReadByte();
 				// 0 = external raster, 1 = managed raster, 2 = inline binary raster
 				break;
-			/*
-		       elif type == TYPE_RASTER:
-			       print('unknown_role = %d' % read_uint8(f))
-			       flag = read_uint8(f)
-			       if (flag & 1) == 0:
-			           fd.nullable = False
-			       
-			       nbcar = read_uint8(f)
-			       raster_column = read_utf16(f, nbcar)
-
-			       wkt_len = read_uint8(f)
-			       wkt_len += read_uint8(f) * 256
-			       wkt = read_utf16(f, wkt_len // 2)
-			       
-			       #f.read(82)
-			       
-			       magic3 = read_uint8(f)
-			       
-			       if magic3 > 0:
-			           raster_has_m = False
-			           raster_has_z = False
-			           if magic3 == 5:
-			               raster_has_z = True
-			           if magic3 == 7:
-			               raster_has_m = True
-			               raster_has_z = True
-
-			           raster_xorig = read_float64(f)
-			           raster_yorig = read_float64(f)
-			           raster_xyscale = read_float64(f)
-			           if raster_has_m:
-			               raster_morig = read_float64(f)
-			               raster_mscale = read_float64(f)
-			           if raster_has_z:
-			               raster_zorig = read_float64(f)
-			               raster_zscale = read_float64(f)
-			           raster_xytolerance = read_float64(f)
-			           if raster_has_m:
-			               raster_mtolerance = read_float64(f)
-			           if raster_has_z:
-			               raster_ztolerance = read_float64(f)
-
-			       fd.raster_type = read_uint8(f)
-			       if fd.raster_type == 0:
-			           print('External raster')
-			       elif fd.raster_type == 1:
-			           print('Managed raster')
-			       elif fd.raster_type == 2:
-			           print('Inline binary content')
-			       else:
-			           print('Unknown raster_type: %d' % fd.raster_type)
-			 */
 
 			default:
 				throw new NotSupportedException($"Unknown field type: {type}");
@@ -1115,7 +1062,10 @@ public sealed class Table : IDisposable
 
 			var magic5 = reader.ReadInt16();
 
-			// TODO IsUnique? IsAscending/Descending? Type (spatial/attribute)?
+			// IsUnique? IsAscending/Descending? Type (spatial/attribute)?
+			// Esri documentation for the Add Attribute Index GP tool says,
+			// that IsUnique and IsAscending is not supported for FGDB and
+			// the UI does not show these properties (ArcGIS Pro 3.3)
 
 			indexes.Add(new IndexInfo(indexName, fieldName));
 		}
