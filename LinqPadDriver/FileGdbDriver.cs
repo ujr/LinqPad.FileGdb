@@ -129,7 +129,7 @@ public class FileGdbDriver : DynamicDataContextDriver
 		}
 		//else if (objectToWrite is Shape shape)
 		//{
-		//	objectToWrite = ShapeProxy.Get(shape)!;
+		//	objectToWrite = ShapeProxy.Get(shape);
 		//}
 		else if (objectToWrite is IEnumerable<byte> bytes)
 		{
@@ -207,14 +207,17 @@ public class FileGdbDriver : DynamicDataContextDriver
 		public bool IsEmpty => Shape.IsEmpty;
 		public object Box => Util.OnDemand("Box", () => Shape.Box);
 
-		public static ShapeProxy? Get(Shape? shape)
+		public static ShapeProxy Get(Shape shape)
 		{
-			if (shape is null) return null;
+			if (shape is null)
+				throw new ArgumentNullException(nameof(shape));
+
 			if (shape is PointShape point) return new PointShapeProxy(point);
 			if (shape is BoxShape box) return new BoxShapeProxy(box);
 			if (shape is MultipointShape multipoint) return new MultipointShapeProxy(multipoint);
 			if (shape is PolylineShape polyline) return new PolylineShapeProxy(polyline);
 			if (shape is PolygonShape polygon) return new PolygonShapeProxy(polygon);
+
 			throw new NotSupportedException($"Unknown shape type {shape.GetType().Name}");
 		}
 	}
@@ -426,7 +429,7 @@ public class $$TYPENAME$$
     return _gdb.OpenTable(name);
   }
 
-  public class SystemTables : TableContainer
+  public class SystemTables : FileGDB.LinqPadDriver.TableContainer
   {
     public SystemTables(FileGDB.Core.FileGDB gdb, bool debugMode) : base(gdb, debugMode) {}
 
@@ -434,7 +437,7 @@ public class $$TYPENAME$$
     $$SYSTEMTABLEPROPS$$
   }
 
-  public class UserTables : TableContainer
+  public class UserTables : FileGDB.LinqPadDriver.TableContainer
   {
     public UserTables(FileGDB.Core.FileGDB gdb, bool debugMode) : base(gdb, debugMode) {}
 
@@ -442,85 +445,38 @@ public class $$TYPENAME$$
     $$USERTABLEPROPS$$
   }
 
-  public abstract class TableContainer
-  {
-    private readonly FileGDB.Core.FileGDB _gdb;
-    private readonly bool _debugMode;
-    private readonly IDictionary<string, TableBase> _cache;
-
-    protected TableContainer(FileGDB.Core.FileGDB gdb, bool debugMode)
-    {
-      _gdb = gdb ?? throw new ArgumentNullException(nameof(gdb));
-      _debugMode = debugMode;
-      _cache = new Dictionary<string, TableBase>();
-    }
-
-    protected T GetTable<T>(string tableName) where T : TableBase, new()
-    {
-      if (!_cache.TryGetValue(tableName, out var table))
-      {
-        var inner = _gdb.OpenTable(tableName);
-        table = new T().SetTable(inner, _debugMode);
-        _cache.Add(tableName, table);
-      }
-      return (T)table;
-    }
-  }
-
-  public abstract class TableBase // TODO move to compiled code (no need to generate)
-  {
-    private FileGDB.Core.Table? _table;
-    protected bool DebugMode { get; private set; }
-
-    public TableBase SetTable(FileGDB.Core.Table table, bool debugMode)
-    {
-      _table = table ?? throw new ArgumentNullException(nameof(table));
-      DebugMode = debugMode;
-      return this;
-    }
-
-    public int FieldCount => Table.FieldCount;
-    public long RowCount => Table.RowCount;
-    public FileGDB.Core.GeometryType GeometryType => Table.GeometryType;
-    public bool HasZ => Table.HasZ;
-    public bool HasM => Table.HasM;
-    public int Version => Table.Version;
-    public bool UseUtf8 => Table.UseUtf8;
-    public long MaxOID => Table.MaxObjectID;
-    public int MaxEntrySize => _table.MaxEntrySize;
-    public int OffsetSize => Table.OffsetSize;
-    public long DataFileSize => Table.FileSizeBytes;
-    public string DataFilePath => Table.GetDataFilePath();
-    public string IndexFilePath => Table.GetIndexFilePath();
-    public IReadOnlyList<FileGDB.Core.FieldInfo> Fields => Table.Fields;
-    public IReadOnlyList<FileGDB.Core.IndexInfo> Indexes => Table.Indexes;
-
-    protected FileGDB.Core.Table Table =>
-      _table ?? throw new InvalidOperationException(""This table wrapper has not been initialized"");
-  }
-
   $$PERTABLECLASSES$$
 }
 ";
 
 		const string perTableTemplate = @"
-public class $$TABLENAME$$Table : TableBase, IEnumerable<$$TABLENAME$$Table.Row>
+public class $$TABLENAME$$Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<$$TABLENAME$$Table.Row>
 {
   IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
   public IEnumerator<Row> GetEnumerator()
   {
-    if (DebugMode) Debugger.Launch();
-
-    var cursor = Table.Search(null, null, null);
+    var cursor = SearchRows();
+    var values = (FileGDB.Core.IRowValues) cursor;
 
     while (cursor.Step())
     {
       var row = new Row();
-      //row.Bar = (BarType)cursor.GetValue(""Bar"");
+      //row.Bar = (BarType)values.GetValue(""Bar"");
       $$FIELDPROPERTYINIT$$
       yield return row;
     }
+  }
+
+  public Row GetRow(long oid)
+  {
+    var values = ReadRow(oid);
+    if (values is null) return null;
+
+    var row = new Row();
+    //row.Bar = (BarType)values.GetValue(""Bar"");
+    $$FIELDPROPERTYINIT$$
+    return row;
   }
 
   public class Row
@@ -575,7 +531,7 @@ public class $$TABLENAME$$Table : TableBase, IEnumerable<$$TABLENAME$$Table.Row>
 					var fieldType = Table.GetDataType(field.Type);
 					var fieldTypeName = GetPropertyTypeName(fieldType);
 
-					propertyInits.AppendLine($"row.@{propName} = ({fieldTypeName}) cursor.GetValue(\"{escaped}\");");
+					propertyInits.AppendLine($"row.@{propName} = ({fieldTypeName}) values.GetValue(\"{escaped}\");");
 					fieldProperties.AppendLine($"public {fieldTypeName} @{propName} {{ get; set; }}");
 				}
 
@@ -829,5 +785,95 @@ public class $$TABLENAME$$Table : TableBase, IEnumerable<$$TABLENAME$$Table.Row>
 		{
 			ToolTipText = field.Alias ?? field.Name
 		};
+	}
+}
+
+[UsedImplicitly]
+public abstract class TableBase
+{
+	private Table? _table;
+	private RowResult? _rowResult;
+	private bool _debugMode;
+
+	public TableBase SetTable(Table table, bool debugMode)
+	{
+		_table = table ?? throw new ArgumentNullException(nameof(table));
+		_debugMode = debugMode;
+		return this;
+	}
+
+	public int FieldCount => Table.FieldCount;
+	public long RowCount => Table.RowCount;
+	public GeometryType GeometryType => Table.GeometryType;
+	public bool HasZ => Table.HasZ;
+	public bool HasM => Table.HasM;
+	public int Version => Table.Version;
+	public bool UseUtf8 => Table.UseUtf8;
+	public long MaxOID => Table.MaxObjectID;
+	public int MaxEntrySize => Table.MaxEntrySize;
+	public int OffsetSize => Table.OffsetSize;
+	public long DataFileSize => Table.FileSizeBytes;
+	public string DataFilePath => Table.GetDataFilePath();
+	public string IndexFilePath => Table.GetIndexFilePath();
+	public IReadOnlyList<FieldInfo> Fields => Table.Fields;
+	public IReadOnlyList<IndexInfo> Indexes => Table.Indexes;
+
+	[PublicAPI]
+	protected RowsResult SearchRows()
+	{
+		if (_debugMode)
+		{
+			Debugger.Launch();
+		}
+
+		return Table.Search(null, null, null);
+	}
+
+	[PublicAPI]
+	protected RowResult? ReadRow(long oid)
+	{
+		if (_debugMode)
+		{
+			Debugger.Launch();
+		}
+
+		var values = Table.ReadRow(oid);
+		if (values is null) return null;
+
+		_rowResult ??= new RowResult(Table.Fields);
+		_rowResult.SetValues(values);
+
+		return _rowResult;
+	}
+
+	[PublicAPI]
+	protected Table Table =>
+		_table ?? throw new InvalidOperationException("This table wrapper has not been initialized");
+}
+
+[UsedImplicitly]
+public abstract class TableContainer
+{
+	private readonly Core.FileGDB _gdb;
+	private readonly bool _debugMode;
+	private readonly IDictionary<string, TableBase> _cache;
+
+	protected TableContainer(Core.FileGDB gdb, bool debugMode)
+	{
+		_gdb = gdb ?? throw new ArgumentNullException(nameof(gdb));
+		_debugMode = debugMode;
+		_cache = new Dictionary<string, TableBase>();
+	}
+
+	[PublicAPI]
+	protected T GetTable<T>(string tableName) where T : TableBase, new()
+	{
+		if (!_cache.TryGetValue(tableName, out var table))
+		{
+			var inner = _gdb.OpenTable(tableName);
+			table = new T().SetTable(inner, _debugMode);
+			_cache.Add(tableName, table);
+		}
+		return (T)table;
 	}
 }

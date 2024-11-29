@@ -41,7 +41,8 @@ LINQ queries against the table. For example:
 ```cs
 Tables.MyPointTable.Dump();
 Tables.MyPointTable.Select(row => row.Shape.ShapeBuffer).Dump();
-Tables.POINTS.Select(row => row.Shape.Bytes).Dump();
+Tables.MyPointTable.Select(row => row.Shape.Bytes).Dump();
+Tables.MyPointTable.GetRow(5).Dump(); // get row by Object ID
 ```
 
 ## Limitations

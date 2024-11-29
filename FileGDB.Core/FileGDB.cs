@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Collections.Immutable;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
@@ -1086,17 +1085,109 @@ public sealed class Table : IDisposable
 	}
 }
 
-public abstract class RowsResult //: IEnumerable<int>, IEnumerator<int>
+public interface IRowValues
+{
+	IReadOnlyList<FieldInfo> Fields { get; }
+	int FindField(string fieldName);
+	object? GetValue(string fieldName);
+	object? GetValue(int fieldIndex);
+}
+
+public class RowResult : IRowValues
+{
+	private object?[]? _values;
+	private readonly IDictionary<string, int> _fieldIndices;
+
+	public RowResult(IReadOnlyList<FieldInfo> fields, object?[]? values = null)
+	{
+		Fields = fields ?? throw new ArgumentNullException(nameof(fields));
+
+		if (values is not null && values.Length != fields.Count)
+			throw new ArgumentException($"Expect {Fields.Count} values, got {values.Length}", nameof(values));
+		_values = values;
+
+		_fieldIndices = new Dictionary<string, int>();
+	}
+
+	public void SetValues(object?[] values)
+	{
+		if (values is null)
+			throw new ArgumentNullException(nameof(values));
+		if (values.Length != Fields.Count)
+			throw new ArgumentException($"Expect {Fields.Count} values, got {values.Length}", nameof(values));
+
+		_values = values;
+	}
+
+	public IReadOnlyList<FieldInfo> Fields { get; }
+
+	public int FindField(string fieldName)
+	{
+		for (int i = 0; i < Fields.Count; i++)
+		{
+			if (string.Equals(fieldName, Fields[i].Name, StringComparison.OrdinalIgnoreCase))
+			{
+				return i;
+			}
+		}
+
+		return -1; // not found
+	}
+
+	public object? GetValue(string fieldName)
+	{
+		if (fieldName is null)
+			throw new ArgumentNullException(nameof(fieldName));
+
+		if (!_fieldIndices.TryGetValue(fieldName, out int index))
+		{
+			index = FindField(fieldName);
+
+			if (index < 0)
+			{
+				throw new FileGDBException($"No such field: {fieldName}");
+			}
+
+			_fieldIndices.Add(fieldName, index);
+		}
+
+		return _values?[index];
+	}
+
+	public object? GetValue(int fieldIndex)
+	{
+		return _values?[fieldIndex];
+	}
+}
+
+public abstract class RowsResult : IRowValues
 {
 	// concrete subclasses: e.g. FullScanResult, TableSubsetResult, ...?
+
+	private readonly IDictionary<string, int> _fieldIndices;
 
 	protected RowsResult(bool hasShape, IReadOnlyList<FieldInfo> fields)
 	{
 		HasShape = hasShape;
 		Fields = fields ?? throw new ArgumentNullException(nameof(fields));
+
+		_fieldIndices = new Dictionary<string, int>();
 	}
 
 	public IReadOnlyList<FieldInfo> Fields { get; }
+
+	public int FindField(string fieldName)
+	{
+		for (int i = 0; i < Fields.Count; i++)
+		{
+			if (string.Equals(fieldName, Fields[i].Name, StringComparison.OrdinalIgnoreCase))
+			{
+				return i;
+			}
+		}
+
+		return -1; // not found
+	}
 
 	public bool HasShape { get; }
 
@@ -1140,28 +1231,40 @@ public abstract class RowsResult //: IEnumerable<int>, IEnumerator<int>
 
 	public abstract GeometryBlob? Shape { get; } // null if no shape
 
-	public abstract object? GetValue(string fieldName);
+	public virtual object? GetValue(string fieldName)
+	{
+		if (fieldName is null)
+			throw new ArgumentNullException(nameof(fieldName));
+
+		if (!_fieldIndices.TryGetValue(fieldName, out int index))
+		{
+			index = FindField(fieldName);
+			if (index < 0) throw new FileGDBException($"No such field: {fieldName}");
+			_fieldIndices.Add(fieldName, index);
+		}
+
+		return GetValue(index);
+	}
+
+	public abstract object? GetValue(int fieldIndex);
 }
 
 public class TableScanResult : RowsResult
 {
 	private long _oid;
-	private readonly FieldInfo[] _fields;
 	private readonly object?[] _values;
 	private readonly long _maxOid;
 	private readonly Table _table;
-	private readonly IDictionary<string, int> _fieldIndices;
 	private readonly int _shapeFieldIndex;
 
-	public TableScanResult(Table table) : base(HasGeometry(table), GetFields(table))
+	public TableScanResult(Table table)
+		: base(HasGeometry(table), GetFields(table))
 	{
 		_table = table ?? throw new ArgumentNullException(nameof(table));
 		_oid = 0;
 		_maxOid = table.MaxObjectID;
-		_fields = table.Fields.ToArray();
-		_values = new object[_fields.Length];
-		_fieldIndices = new Dictionary<string, int>();
-		_shapeFieldIndex = FindShapeField(table.Fields);
+		_values = new object[Fields.Count];
+		_shapeFieldIndex = FindShapeField(Fields);
 	}
 
 	public override bool Step()
@@ -1182,31 +1285,9 @@ public class TableScanResult : RowsResult
 
 	public override GeometryBlob? Shape => GetShape();
 
-	public override object? GetValue(string? fieldName)
+	public override object? GetValue(int fieldIndex)
 	{
-		if (fieldName is null) return null;
-
-		if (!_fieldIndices.TryGetValue(fieldName, out int index))
-		{
-			index = FindField(fieldName, _fields);
-			if (index < 0) throw new FileGDBException($"No such field: {fieldName}");
-			_fieldIndices.Add(fieldName, index);
-		}
-
-		return _values[index];
-	}
-
-	private static int FindField(string fieldName, FieldInfo[] fields)
-	{
-		for (int i = 0; i < fields.Length; i++)
-		{
-			if (string.Equals(fieldName, fields[i].Name, StringComparison.OrdinalIgnoreCase))
-			{
-				return i;
-			}
-		}
-
-		return -1; // not found
+		return _values[fieldIndex];
 	}
 
 	/// <returns>index of first field of type Geometry, or -1 if no such field</returns>
@@ -1241,10 +1322,8 @@ public class TableScanResult : RowsResult
 		return table.GeometryType != GeometryType.Null;
 	}
 
-	private static ImmutableArray<FieldInfo> GetFields(Table? table)
+	private static IReadOnlyList<FieldInfo> GetFields(Table? table)
 	{
-		return table is null
-			? ImmutableArray<FieldInfo>.Empty
-			: table.Fields.ToImmutableArray();
+		return table?.Fields ?? throw new ArgumentNullException(nameof(table));
 	}
 }

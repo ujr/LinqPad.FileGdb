@@ -113,12 +113,12 @@ public class TYPENAME
 	public abstract class TableBase
 	{
 		private FileGDB.Core.Table? _table;
-		protected bool DebugMode { get; private set; }
+		private bool _debugMode;
 
 		public TableBase SetTable(FileGDB.Core.Table table, bool debugMode)
 		{
 			_table = table ?? throw new ArgumentNullException(nameof(table));
-			DebugMode = debugMode;
+			_debugMode = debugMode;
 			return this;
 		}
 
@@ -138,6 +138,14 @@ public class TYPENAME
 		public IReadOnlyList<FileGDB.Core.FieldInfo> Fields => Table.Fields;
 		public IReadOnlyList<FileGDB.Core.IndexInfo> Indexes => Table.Indexes;
 
+		protected RowsResult SearchRows()
+		{
+			if (_debugMode)
+				Debugger.Launch();
+
+			return Table.Search(null, null, null);
+		}
+
 		protected FileGDB.Core.Table Table =>
 			_table ?? throw new InvalidOperationException("This table wrapper has not been initialized");
 	}
@@ -148,18 +156,14 @@ public class TYPENAME
 
 		public IEnumerator<Row> GetEnumerator()
 		{
-			if (DebugMode)
-			{
-				Debugger.Launch();
-			}
-
-			var cursor = Table.Search(null, null, null);
+			var cursor = SearchRows();
+			var values = (IRowValues)cursor;
 
 			while (cursor.Step())
 			{
 				var row = new Row();
 				// Initialize each property like this:
-				//row.@Bar = (@BarType)cursor.GetValue("Bar");
+				//row.@Bar = (@BarType)values.GetValue("Bar");
 				yield return row;
 			}
 		}
