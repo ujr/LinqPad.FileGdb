@@ -145,6 +145,61 @@ public class WKTWriterTest
 	}
 
 	[Fact]
+	public void CanDefaultAttributeAwareness()
+	{
+		var buffer = new StringBuilder();
+		using var writer = new WKTWriter(buffer);
+
+		writer.DecimalDigits = 1;
+
+		writer.WritePoint(1.2, 3.4);
+		writer.Flush();
+		Assert.Equal("POINT (1.2 3.4)", buffer.ToString());
+
+		writer.DefaultHasZ = true;
+		writer.DefaultHasM = true;
+		writer.DefaultHasID = true;
+
+		buffer.Clear();
+		writer.WritePoint(1.2, 3.4);
+		writer.Flush();
+		Assert.Equal("POINT ZM (1.2 3.4 0 NaN)", buffer.ToString());
+
+		writer.EmitID = true;
+
+		buffer.Clear();
+		writer.WritePoint(1.2, 3.4);
+		writer.Flush();
+		Assert.Equal("POINT ZMID (1.2 3.4 0 NaN 0)", buffer.ToString());
+	}
+
+	[Fact]
+	public void CanCurrentAttributeAwareness()
+	{
+		var buffer = new StringBuilder();
+		using var writer = new WKTWriter(buffer);
+
+		writer.BeginPoint();
+		Assert.False(writer.CurrentHasZ);
+		Assert.False(writer.CurrentHasM);
+		Assert.False(writer.CurrentHasID);
+		writer.EndShape();
+
+		writer.BeginPolygon(hasZ: true, hasID: true);
+		Assert.True(writer.CurrentHasZ);
+		Assert.False(writer.CurrentHasM);
+		Assert.True(writer.CurrentHasID);
+		writer.EndShape();
+
+		writer.DefaultHasM = true;
+		writer.BeginMultipoint(hasZ: true);
+		Assert.True(writer.CurrentHasZ);
+		Assert.True(writer.CurrentHasM);
+		Assert.False(writer.CurrentHasID);
+		writer.EndShape();
+	}
+
+	[Fact]
 	public void CanWriteLineString()
 	{
 		var buffer = new StringBuilder();

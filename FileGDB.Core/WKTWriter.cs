@@ -1,4 +1,6 @@
+using System;
 using System.Globalization;
+using System.IO;
 using System.Text;
 
 namespace FileGDB.Core;
@@ -248,9 +250,9 @@ public class WKTWriter : IDisposable
 
 	public void WritePoint(double x, double y, double z = 0.0, double m = double.NaN, int id = 0)
 	{
-		bool hasZ = z != 0.0 && !double.IsNaN(z);
-		bool hasM = !double.IsNaN(m);
-		bool hasID = id != 0;
+		bool hasZ = DefaultHasZ || z != 0.0 && !double.IsNaN(z);
+		bool hasM = DefaultHasM || !double.IsNaN(m);
+		bool hasID = DefaultHasID || id != 0;
 
 		BeginPoint(hasZ, hasM, hasID);
 		AddVertex(x, y, z, m, id);
