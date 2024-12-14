@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 
 namespace FileGDB.Core;
 
@@ -35,102 +34,96 @@ public class GeometryBlobReader
 	}
 
 	/// <summary>
-	/// Decode the given File GDB geometry blob into an Esri Shape Buffer
+	/// Decode File GDB geometry blob into the given shape factory
 	/// </summary>
-	/// <returns>An Esri Shape Buffer byte array (or null if the given blob is null)</returns>
-	public ShapeBuffer ReadAsShapeBuffer()
+	public void Read(ShapeFactory factory)
 	{
+		if (factory is null)
+			throw new ArgumentNullException(nameof(factory));
+
 		if (_blob.Length < 1)
 		{
-			// treat empty geometry blob as ShapeType.Null:
-			return new ShapeBuffer(GetNullShapeBytes());
+			throw Error("Geometry blob is empty; cannot decode");
 		}
 
-		// first is geometry type:
-		var typeValue = ReadVarUnsigned();
-		if (typeValue > uint.MaxValue)
-			throw Error($"Shape type value too large: {typeValue}");
-
+		uint typeValue = ReadShapeType();
 		var shapeType = ShapeBuffer.GetShapeType(typeValue);
 
 		switch (shapeType)
 		{
 			case ShapeType.Null:
-				return new ShapeBuffer(GetNullShapeBytes());
+				ReadNull(factory);
+				break;
+
 			case ShapeType.Point:
 			case ShapeType.PointZ:
 			case ShapeType.PointM:
 			case ShapeType.PointZM:
 			case ShapeType.GeneralPoint:
-				return new ShapeBuffer(ReadPoint((uint)typeValue));
+				ReadPoint(factory, typeValue);
+				break;
+
 			case ShapeType.Multipoint:
 			case ShapeType.MultipointZ:
 			case ShapeType.MultipointM:
 			case ShapeType.MultipointZM:
 			case ShapeType.GeneralMultipoint:
-				return new ShapeBuffer(ReadMultipoint((uint)typeValue));
+				ReadMultipoint(factory, typeValue);
+				break;
+
 			case ShapeType.Polyline:
 			case ShapeType.PolylineZ:
 			case ShapeType.PolylineM:
 			case ShapeType.PolylineZM:
 			case ShapeType.GeneralPolyline:
-				return new ShapeBuffer(ReadMultipart((uint)typeValue));
+				ReadMultipart(factory, typeValue);
+				break;
+
 			case ShapeType.Polygon:
 			case ShapeType.PolygonZ:
 			case ShapeType.PolygonM:
 			case ShapeType.PolygonZM:
 			case ShapeType.GeneralPolygon:
-				return new ShapeBuffer(ReadMultipart((uint)typeValue));
+				ReadMultipart(factory, typeValue);
+				break;
+
 			case ShapeType.MultiPatch:
 			case ShapeType.MultiPatchM:
 			case ShapeType.GeneralMultiPatch:
 				throw new NotImplementedException("MultiPatch not yet implemented, sorry");
+
 			case ShapeType.GeometryBag: // can this occur in FGDB at all?
 				throw new NotSupportedException("GeometryBag is not supported");
+
+			default:
+				throw Error($"Unknown shape type: {shapeType}");
 		}
-
-		throw Error($"Unknown shape type: {shapeType}");
 	}
 
-	private static byte[] GetNullShapeBytes()
+	private static void ReadNull(ShapeFactory factory)
 	{
-		var bytes = new byte[4];
-		WriteInt32((int) ShapeType.Null, bytes, 0);
-		return bytes;
+		factory.Initialize((uint)ShapeType.Null);
 	}
 
-	private byte[] ReadPoint(uint shapeType)
+	private void ReadPoint(ShapeFactory factory, uint shapeType)
 	{
-		// ShapeBuffer (output):
-		// - I32 ShapeType
-		// - F64 X, Y
-		// - if hasZ: F64 Z
-		// - if hasM: F64 M
-		// - if hasID: I32 ID
-		// Empty point: NaN for X and Y, zero(!) for Z if hasZ, NaN for M if hasM, zero for ID if hasID
+		var geometryType = ShapeBuffer.GetGeometryType(shapeType);
+		if (geometryType != GeometryType.Point)
+			throw new ArgumentException("Shape is not a Point", nameof(shapeType));
 
 		bool hasZ = ShapeBuffer.GetHasZ(shapeType);
 		bool hasM = ShapeBuffer.GetHasM(shapeType);
 		bool hasID = ShapeBuffer.GetHasID(shapeType);
 
-		int length = 4 + 8 + 8;
-		if (hasZ) length += 8;
-		if (hasM) length += 8;
-		if (hasID) length += 4;
-
-		var bytes = new byte[length];
-		int offset = 0;
-
-		int type = ShapeBuffer.GetShapeType(shapeType, hasZ, hasM, hasID);
-		offset += WriteInt32(type, bytes, offset);
+		factory.Initialize(shapeType);
 
 		ulong ix = ReadVarUnsigned();
 		double x = ix < 1 ? double.NaN : XOrigin + (ix - 1) / XYScale;
-		offset += WriteDouble(x, bytes, offset);
 
 		ulong iy = ReadVarUnsigned();
 		double y = iy < 1 ? double.NaN : YOrigin + (iy - 1) / XYScale;
-		offset += WriteDouble(y, bytes, offset);
+
+		factory.AddXY(x, y);
 
 		if (hasZ)
 		{
@@ -141,7 +134,8 @@ public class GeometryBlobReader
 
 			ulong iz = ReadVarUnsigned();
 			double z = iz < 1 ? double.NaN : ZOrigin + (iz - 1) / ZScale;
-			offset += WriteDouble(z, bytes, offset);
+
+			factory.AddZ(z);
 		}
 
 		if (hasM)
@@ -153,33 +147,24 @@ public class GeometryBlobReader
 
 			ulong im = ReadVarUnsigned();
 			double m = im < 1 ? double.NaN : MOrigin + (im - 1) / MScale;
-			offset += WriteDouble(m, bytes, offset);
+
+			factory.AddM(m);
 		}
 
 		if (hasID)
 		{
 			long v = ReadVarInteger();
 			var id = unchecked((int)v);
-			offset += WriteInt32(id, bytes, offset);
+
+			factory.AddID(id);
 		}
-
-		Debug.Assert(bytes.Length == offset);
-
-		return bytes;
 	}
 
-	private byte[] ReadMultipoint(uint shapeType)
+	private void ReadMultipoint(ShapeFactory factory, uint shapeType)
 	{
-		// ShapeBuffer (output):
-		// I32 type
-		// D64 xmin,ymin,xmax,ymax
-		// I32 numPoints
-		// D64[2*numPoints] xy coords
-		// if hasZ: D64 zmin,zmax; D64[numPoints] z coords
-		// if hasM: D64 mmin,mmax; D64[numPoints] m coords
-		// if hasID: I32[numPoints] id values
-		// Empty multipoint: 4x NaN for box, 0 for numPoints (total 40 bytes)
-		//   plus 2x NaN for Zmin,Zmax if hasZ, plus 2x NaN for Mmin,Mmax if hasM
+		var geometryType = ShapeBuffer.GetGeometryType(shapeType);
+		if (geometryType != GeometryType.Multipoint)
+			throw new ArgumentException("Shape is not a Multipoint", nameof(shapeType));
 
 		bool hasZ = ShapeBuffer.GetHasZ(shapeType);
 		bool hasM = ShapeBuffer.GetHasM(shapeType);
@@ -190,79 +175,47 @@ public class GeometryBlobReader
 			throw Error($"Multipoint geometry claims to have {vu} points, which is too big for this API");
 		int numPoints = (int)vu;
 
-		int length = 4 + 4 * 8 + 4;
-		length += numPoints * (8 + 8);
-		if (hasZ) length += 8 + 8 + numPoints * 8;
-		if (hasM) length += 8 + 8 + numPoints * 8;
-		if (hasID) length += numPoints * 4;
-
-		var bytes = new byte[length];
-		int offset = 0;
-
-		int type = ShapeBuffer.GetShapeType(shapeType, hasZ, hasM, hasID);
-
-		offset += WriteInt32(type, bytes, offset);
+		factory.Initialize(shapeType);
 
 		ReadBoxXY(out double xmin, out double ymin, out double xmax, out double ymax);
 
-		offset += WriteDouble(xmin, bytes, offset);
-		offset += WriteDouble(ymin, bytes, offset);
-		offset += WriteDouble(xmax, bytes, offset);
-		offset += WriteDouble(ymax, bytes, offset);
+		factory.SetMinMaxXY(xmin, ymin, xmax, ymax);
 
-		offset += WriteInt32(numPoints, bytes, offset);
-
-		Debug.Assert(40 == offset);
-
-		offset += CopyXYs(numPoints, bytes, offset);
+		ReadXYs(factory, numPoints);
 
 		if (hasZ)
 		{
-			offset += CopyZs(numPoints, bytes, offset);
+			ReadZs(factory, numPoints);
 		}
 
 		if (hasM)
 		{
-			offset += CopyMs(numPoints, bytes, offset);
+			ReadMs(factory, numPoints);
 		}
 
 		if (hasID)
 		{
-			offset += CopyIDs(numPoints, bytes, offset);
+			ReadIDs(factory, numPoints);
 		}
-
-		Debug.Assert(bytes.Length == offset);
-
-		return bytes;
 	}
 
-	private byte[] ReadMultipart(uint shapeType)
+	private void ReadMultipart(ShapeFactory factory, uint shapeType)
 	{
-		// ShapeBuffer (output):
-		// - I32 type
-		// - F64 xmin,ymin,xmax,ymax
-		// - I32 numParts
-		// - I32 numPoints
-		// - I32[numParts] parts (index to first point in part)
-		// - F64[2*numPoints] xy coords
-		// - if hasZ: F64 zmin,zmax,z...
-		// - if hasM: F64 mmin,mmax,m...
-		// - if hasCurves: I32 numCurves, segment modifiers (...)
-		// - if hasIDs: I32[numPoints]
-		// Empty polyline/polygon: 4x NaN for box, 0 numParts, 0 numPoints (total 44 bytes)
-		//   plus 2x NaN for Zmin,Zmax (if hasZ), plus 2x NaN for Mmin,Mmax (if hasM)
-
 		// GeometryBlob (input):
-		// numPoints (vu)
-		// numParts (vu)
-		// numCurves (vu) if general type and MayHaveCurves -- TODO or as in Ext Shp Buf?
-		// box (4x vu)
-		// perPartCounts (numParts-1 vu; num points in last part is not stored)
-		// XY coords
-		// if hasZ: Z coords (but it seems no min/max)
-		// if hasM: M coords (but it seems no min/max)
-		// if hasCurves: segment modifiers (can only read sequentially)
-		// if hasID: ID values (vi)
+		// - numPoints (vu)
+		// - numParts (vu)
+		// - numCurves (vu) if general type and MayHaveCurves -- TODO or as in Ext Shp Buf?
+		// - box (4x vu)
+		// - perPartCounts (numParts-1 vu; num points in last part is not stored)
+		// - XY coords
+		// - if hasZ: Z coords (but it seems no min/max)
+		// - if hasM: M coords (but it seems no min/max)
+		// - if hasCurves: segment modifiers (can only read sequentially)
+		// - if hasID: ID values (vi)
+
+		var geometryType = ShapeBuffer.GetGeometryType(shapeType);
+		if (geometryType != GeometryType.Polyline && geometryType != GeometryType.Polygon)
+			throw new ArgumentException("Shape is not a Polyline or a Polygon", nameof(shapeType));
 
 		bool hasZ = ShapeBuffer.GetHasZ(shapeType);
 		bool hasM = ShapeBuffer.GetHasM(shapeType);
@@ -270,8 +223,7 @@ public class GeometryBlobReader
 		bool mayHaveCurves = ShapeBuffer.GetMayHaveCurves(shapeType); // TODO unsure if 100% correct for GeomBlob
 
 		ulong vu = ReadVarUnsigned();
-		if (vu == 0)
-			return CreateEmptyMultipartShapeBuffer(shapeType);
+		if (vu == 0) return; // empty
 		if (vu > int.MaxValue)
 			throw Error($"Multipart geometry claims to have {vu} points, which is too big for this API");
 		int numPoints = (int)vu;
@@ -290,208 +242,440 @@ public class GeometryBlobReader
 			numCurves = (int)vu;
 		}
 
+		factory.Initialize(shapeType);
+
 		ReadBoxXY(out double xmin, out double ymin, out double xmax, out double ymax);
 
-		int length = GetMultipartBufferSize(hasZ, hasM, hasID, numPoints, numParts, numCurves);
+		factory.SetMinMaxXY(xmin, ymin, xmax, ymax);
 
-		var bytes = new byte[length];
-		int offset = 0;
-
-		offset += WriteInt32(unchecked((int)shapeType), bytes, offset);
-
-		offset += WriteDouble(xmin, bytes, offset);
-		offset += WriteDouble(ymin, bytes, offset);
-		offset += WriteDouble(xmax, bytes, offset);
-		offset += WriteDouble(ymax, bytes, offset);
-
-		offset += WriteInt32(numParts, bytes, offset);
-		offset += WriteInt32(numPoints, bytes, offset);
-
-		Debug.Assert(44 == offset);
-
-		int firstPointIndex = 0;
-		offset += WriteInt32(firstPointIndex, bytes, offset);
+		int pointTally = 0;
 		for (int k = 0; k < numParts - 1; k++)
 		{
 			vu = ReadVarUnsigned();
 			if (vu > (uint)numPoints)
 				throw Error($"Multipart geometry claims to have {vu} points in part {k} but only {numPoints} points in total");
-			firstPointIndex += (int)vu;
-			offset += WriteInt32(firstPointIndex, bytes, offset);
+			// geometry blob stores number of points in part (but omits this for the last part)
+			var pointCount = (int)vu;
+			pointTally += pointCount;
+			factory.AddPart(pointCount);
 		}
 
-		offset += CopyXYs(numPoints, bytes, offset);
+		factory.AddPart(numPoints - pointTally);
+
+		ReadXYs(factory, numPoints);
 
 		if (hasZ)
 		{
-			offset += CopyZs(numPoints, bytes, offset);
+			ReadZs(factory, numPoints);
 		}
 
 		if (hasM)
 		{
-			offset += CopyMs(numPoints, bytes, offset);
+			ReadMs(factory, numPoints);
 		}
 
 		if (numCurves >= 0)
 		{
-			offset += WriteInt32(numCurves, bytes, offset);
-			offset += CopyCurves(numCurves, bytes, offset);
+			ReadCurves(factory, numCurves);
 		}
 
 		if (hasID)
 		{
-			offset += CopyIDs(numPoints, bytes, offset);
-		}
-
-		Debug.Assert(bytes.Length == offset);
-
-		return bytes;
-	}
-
-	private int GetMultipartBufferSize(bool hasZ, bool hasM, bool hasID, int numPoints, int numParts, int numCurves)
-	{
-		int length = 4 + 4 * 8 + 4 + 4; // type, box, numParts, numPoints
-		length += numParts * 4; // part index array
-		length += numPoints * 16; // xy coords
-		if (hasZ) length += 8 + 8 + numPoints * 8; // zmin, zmax, z coords
-		if (hasM) length += 8 + 8 + numPoints * 8; // mmin, mmax, m coords
-		if (hasID) length += numPoints * 4; // id values (integers)
-
-		if (numCurves >= 0)
-		{
-			length += 4; // numCurves
-		}
-
-		if (numCurves > 0)
-		{
-			// The trouble is that size depends on curve segment type,
-			// so we must first read all curve segments before we can
-			// compute shape buffer size...
-
-			int restore = _blobIndex;
-
-			// Skip per part counts:
-			for (int k = 0; k < numParts - 1; k++)
-			{
-				_ = ReadVarUnsigned();
-			}
-
-			// Skip XY coordinates:
-			for (var j = 0; j < 2 * numPoints; j++)
-			{
-				_ = ReadVarInteger();
-			}
-
-			// Skip Z coordinates:
-			if (hasZ)
-			{
-				for (int j = 0; j < numPoints; j++)
-				{
-					_ = ReadVarInteger();
-				}
-			}
-
-			// Skip M coordinates:
-			if (hasM && numPoints > 0)
-			{
-				long dummy = ReadVarInteger();
-				// Cope with special case -2 meaning "all Ms are NaN" (?)
-				if (dummy != -2)
-				{
-					for (int j = 1; j < numPoints; j++)
-					{
-						_ = ReadVarInteger();
-					}
-				}
-			}
-
-			// to get to the segment modifiers:
-			for (int j = 0; j < numCurves; j++)
-			{
-				_ = ReadVarUnsigned(); // startIndex
-				var segmentType = ReadVarUnsigned();
-
-				length += 4 + 4; // startIndex and curveType (both I32)
-
-				var modifierSize = GetSegmentModifierSize(segmentType);
-
-				length += modifierSize;
-
-				_blobIndex += modifierSize;
-			}
-
-			// Vertex IDs may follow, but their size is already known
-
-			_blobIndex = restore; // rewind
-		}
-
-		return length; // bytes for Shape Buffer
-	}
-
-	private int GetSegmentModifierSize(ulong segmentType)
-	{
-		switch (segmentType)
-		{
-			case 1: // circular arc
-				return 8 + 8 + 4;
-			case 2: // linear (must not occur here)
-				throw Error($"Segment type {segmentType} (line) should not occur amongst segment modifiers");
-			case 3: // spiral arc (undocumented)
-				throw Error($"Segment type {segmentType} (spiral arc) is not supported");
-			case 4: // cubic bezier arc
-				return 8 + 8 + 8 + 8;
-			case 5: // elliptic arc
-				return 8 + 8 + 8 + 8 + 8 + 4;
-			default:
-				throw Error($"Unknown segment type {segmentType}");
+			ReadIDs(factory, numPoints);
 		}
 	}
 
-	private static byte[] CreateEmptyMultipartShapeBuffer(uint shapeType)
+	//private static byte[] GetNullShapeBytes()
+	//{
+	//	var bytes = new byte[4];
+	//	ShapeBuffer.WriteInt32((int) ShapeType.Null, bytes, 0);
+	//	return bytes;
+	//}
+
+	//private byte[] ReadPoint(uint shapeType)
+	//{
+	//	// ShapeBuffer (output):
+	//	// - I32 ShapeType
+	//	// - F64 X, Y
+	//	// - if hasZ: F64 Z
+	//	// - if hasM: F64 M
+	//	// - if hasID: I32 ID
+	//	// Empty point: NaN for X and Y, zero(!) for Z if hasZ, NaN for M if hasM, zero for ID if hasID
+
+	//	bool hasZ = ShapeBuffer.GetHasZ(shapeType);
+	//	bool hasM = ShapeBuffer.GetHasM(shapeType);
+	//	bool hasID = ShapeBuffer.GetHasID(shapeType);
+
+	//	int length = ShapeBuffer.GetPointBufferSize(hasZ, hasM, hasID);
+
+	//	var bytes = new byte[length];
+	//	int offset = 0;
+
+	//	int type = ShapeBuffer.GetShapeType(shapeType, hasZ, hasM, hasID);
+	//	offset += ShapeBuffer.WriteInt32(type, bytes, offset);
+
+	//	ulong ix = ReadVarUnsigned();
+	//	double x = ix < 1 ? double.NaN : XOrigin + (ix - 1) / XYScale;
+	//	offset += ShapeBuffer.WriteDouble(x, bytes, offset);
+
+	//	ulong iy = ReadVarUnsigned();
+	//	double y = iy < 1 ? double.NaN : YOrigin + (iy - 1) / XYScale;
+	//	offset += ShapeBuffer.WriteDouble(y, bytes, offset);
+
+	//	if (hasZ)
+	//	{
+	//		if (!HasZ)
+	//		{
+	//			throw Error("Geometry BLOB has Z values but GeometryDef has no ZOrigin and ZScale for decoding");
+	//		}
+
+	//		ulong iz = ReadVarUnsigned();
+	//		double z = iz < 1 ? double.NaN : ZOrigin + (iz - 1) / ZScale;
+	//		offset += ShapeBuffer.WriteDouble(z, bytes, offset);
+	//	}
+
+	//	if (hasM)
+	//	{
+	//		if (!HasM)
+	//		{
+	//			throw Error("Geometry BLOB has M values but GeometryDef has no MOrigin and MScale for decoding");
+	//		}
+
+	//		ulong im = ReadVarUnsigned();
+	//		double m = im < 1 ? double.NaN : MOrigin + (im - 1) / MScale;
+	//		offset += ShapeBuffer.WriteDouble(m, bytes, offset);
+	//	}
+
+	//	if (hasID)
+	//	{
+	//		long v = ReadVarInteger();
+	//		var id = unchecked((int)v);
+	//		offset += ShapeBuffer.WriteInt32(id, bytes, offset);
+	//	}
+
+	//	Debug.Assert(bytes.Length == offset);
+
+	//	return bytes;
+	//}
+
+	//private byte[] ReadMultipoint(uint shapeType)
+	//{
+	//	// ShapeBuffer (output):
+	//	// I32 type
+	//	// D64 xmin,ymin,xmax,ymax
+	//	// I32 numPoints
+	//	// D64[2*numPoints] xy coords
+	//	// if hasZ: D64 zmin,zmax; D64[numPoints] z coords
+	//	// if hasM: D64 mmin,mmax; D64[numPoints] m coords
+	//	// if hasID: I32[numPoints] id values
+	//	// Empty multipoint: 4x NaN for box, 0 for numPoints (total 40 bytes)
+	//	//   plus 2x NaN for Zmin,Zmax if hasZ, plus 2x NaN for Mmin,Mmax if hasM
+
+	//	bool hasZ = ShapeBuffer.GetHasZ(shapeType);
+	//	bool hasM = ShapeBuffer.GetHasM(shapeType);
+	//	bool hasID = ShapeBuffer.GetHasID(shapeType);
+
+	//	ulong vu = ReadVarUnsigned();
+	//	if (vu > int.MaxValue)
+	//		throw Error($"Multipoint geometry claims to have {vu} points, which is too big for this API");
+	//	int numPoints = (int)vu;
+
+	//	int length = ShapeBuffer.GetMultipointBufferSize(hasZ, hasM, hasID, numPoints);
+
+	//	var bytes = new byte[length];
+	//	int offset = 0;
+
+	//	int type = ShapeBuffer.GetShapeType(shapeType, hasZ, hasM, hasID);
+
+	//	offset += ShapeBuffer.WriteInt32(type, bytes, offset);
+
+	//	ReadBoxXY(out double xmin, out double ymin, out double xmax, out double ymax);
+
+	//	offset += ShapeBuffer.WriteDouble(xmin, bytes, offset);
+	//	offset += ShapeBuffer.WriteDouble(ymin, bytes, offset);
+	//	offset += ShapeBuffer.WriteDouble(xmax, bytes, offset);
+	//	offset += ShapeBuffer.WriteDouble(ymax, bytes, offset);
+
+	//	offset += ShapeBuffer.WriteInt32(numPoints, bytes, offset);
+
+	//	Debug.Assert(40 == offset);
+
+	//	offset += CopyXYs(numPoints, bytes, offset);
+
+	//	if (hasZ)
+	//	{
+	//		offset += CopyZs(numPoints, bytes, offset);
+	//	}
+
+	//	if (hasM)
+	//	{
+	//		offset += CopyMs(numPoints, bytes, offset);
+	//	}
+
+	//	if (hasID)
+	//	{
+	//		offset += CopyIDs(numPoints, bytes, offset);
+	//	}
+
+	//	Debug.Assert(bytes.Length == offset);
+
+	//	return bytes;
+	//}
+
+	//private byte[] ReadMultipart(uint shapeType)
+	//{
+	//	// ShapeBuffer (output):
+	//	// - I32 type
+	//	// - F64 xmin,ymin,xmax,ymax
+	//	// - I32 numParts
+	//	// - I32 numPoints
+	//	// - I32[numParts] parts (index to first point in part)
+	//	// - F64[2*numPoints] xy coords
+	//	// - if hasZ: F64 zmin,zmax,z...
+	//	// - if hasM: F64 mmin,mmax,m...
+	//	// - if hasCurves: I32 numCurves, segment modifiers (...)
+	//	// - if hasIDs: I32[numPoints]
+	//	// Empty polyline/polygon: 4x NaN for box, 0 numParts, 0 numPoints (total 44 bytes)
+	//	//   plus 2x NaN for Zmin,Zmax (if hasZ), plus 2x NaN for Mmin,Mmax (if hasM)
+
+	//	// GeometryBlob (input):
+	//	// numPoints (vu)
+	//	// numParts (vu)
+	//	// numCurves (vu) if general type and MayHaveCurves -- TODO or as in Ext Shp Buf?
+	//	// box (4x vu)
+	//	// perPartCounts (numParts-1 vu; num points in last part is not stored)
+	//	// XY coords
+	//	// if hasZ: Z coords (but it seems no min/max)
+	//	// if hasM: M coords (but it seems no min/max)
+	//	// if hasCurves: segment modifiers (can only read sequentially)
+	//	// if hasID: ID values (vi)
+
+	//	bool hasZ = ShapeBuffer.GetHasZ(shapeType);
+	//	bool hasM = ShapeBuffer.GetHasM(shapeType);
+	//	bool hasID = ShapeBuffer.GetHasID(shapeType);
+	//	bool mayHaveCurves = ShapeBuffer.GetMayHaveCurves(shapeType); // TODO unsure if 100% correct for GeomBlob
+
+	//	ulong vu = ReadVarUnsigned();
+	//	if (vu == 0)
+	//		return CreateEmptyMultipartShapeBuffer(shapeType);
+	//	if (vu > int.MaxValue)
+	//		throw Error($"Multipart geometry claims to have {vu} points, which is too big for this API");
+	//	int numPoints = (int)vu;
+
+	//	vu = ReadVarUnsigned();
+	//	if (vu > (uint)numPoints)
+	//		throw Error($"Multipart geometry claims to have {vu} parts, which is more than it has points ({numPoints})");
+	//	int numParts = (int)vu;
+
+	//	int numCurves = -1;
+	//	if (mayHaveCurves)
+	//	{
+	//		vu = ReadVarUnsigned();
+	//		if (vu > (uint)numPoints)
+	//			throw Error($"Multipart geometry claims to have {vu} curves but has only {numPoints} points");
+	//		numCurves = (int)vu;
+	//	}
+
+	//	ReadBoxXY(out double xmin, out double ymin, out double xmax, out double ymax);
+
+	//	int length = GetMultipartBufferSize(hasZ, hasM, hasID, numPoints, numParts, numCurves);
+
+	//	var bytes = new byte[length];
+	//	int offset = 0;
+
+	//	offset += ShapeBuffer.WriteShapeType(shapeType, bytes, offset);
+
+	//	offset += ShapeBuffer.WriteDouble(xmin, bytes, offset);
+	//	offset += ShapeBuffer.WriteDouble(ymin, bytes, offset);
+	//	offset += ShapeBuffer.WriteDouble(xmax, bytes, offset);
+	//	offset += ShapeBuffer.WriteDouble(ymax, bytes, offset);
+
+	//	offset += ShapeBuffer.WriteInt32(numParts, bytes, offset);
+	//	offset += ShapeBuffer.WriteInt32(numPoints, bytes, offset);
+
+	//	Debug.Assert(44 == offset);
+
+	//	int firstPointIndex = 0;
+	//	offset += ShapeBuffer.WriteInt32(firstPointIndex, bytes, offset);
+	//	for (int k = 0; k < numParts - 1; k++)
+	//	{
+	//		vu = ReadVarUnsigned();
+	//		if (vu > (uint)numPoints)
+	//			throw Error($"Multipart geometry claims to have {vu} points in part {k} but only {numPoints} points in total");
+	//		firstPointIndex += (int)vu;
+	//		offset += ShapeBuffer.WriteInt32(firstPointIndex, bytes, offset);
+	//	}
+
+	//	offset += CopyXYs(numPoints, bytes, offset);
+
+	//	if (hasZ)
+	//	{
+	//		offset += CopyZs(numPoints, bytes, offset);
+	//	}
+
+	//	if (hasM)
+	//	{
+	//		offset += CopyMs(numPoints, bytes, offset);
+	//	}
+
+	//	if (numCurves >= 0)
+	//	{
+	//		offset += ShapeBuffer.WriteInt32(numCurves, bytes, offset);
+	//		offset += CopyCurves(numCurves, bytes, offset);
+	//	}
+
+	//	if (hasID)
+	//	{
+	//		offset += CopyIDs(numPoints, bytes, offset);
+	//	}
+
+	//	Debug.Assert(bytes.Length == offset);
+
+	//	return bytes;
+	//}
+
+	//private int GetMultipartBufferSize(bool hasZ, bool hasM, bool hasID, int numPoints, int numParts, int numCurves)
+	//{
+	//	int length = 4 + 4 * 8 + 4 + 4; // type, box, numParts, numPoints
+	//	length += numParts * 4; // part index array
+	//	length += numPoints * 16; // xy coords
+	//	if (hasZ) length += 8 + 8 + numPoints * 8; // zmin, zmax, z coords
+	//	if (hasM) length += 8 + 8 + numPoints * 8; // mmin, mmax, m coords
+	//	if (hasID) length += numPoints * 4; // id values (integers)
+
+	//	if (numCurves >= 0)
+	//	{
+	//		length += 4; // numCurves
+	//	}
+
+	//	if (numCurves > 0)
+	//	{
+	//		// The trouble is that size depends on curve segment type,
+	//		// so we must first read all curve segments before we can
+	//		// compute shape buffer size...
+
+	//		int restore = _blobIndex;
+
+	//		// Skip per part counts:
+	//		for (int k = 0; k < numParts - 1; k++)
+	//		{
+	//			_ = ReadVarUnsigned();
+	//		}
+
+	//		// Skip XY coordinates:
+	//		for (var j = 0; j < 2 * numPoints; j++)
+	//		{
+	//			_ = ReadVarInteger();
+	//		}
+
+	//		// Skip Z coordinates:
+	//		if (hasZ)
+	//		{
+	//			for (int j = 0; j < numPoints; j++)
+	//			{
+	//				_ = ReadVarInteger();
+	//			}
+	//		}
+
+	//		// Skip M coordinates:
+	//		if (hasM && numPoints > 0)
+	//		{
+	//			long dummy = ReadVarInteger();
+	//			// Cope with special case -2 meaning "all Ms are NaN" (?)
+	//			if (dummy != -2)
+	//			{
+	//				for (int j = 1; j < numPoints; j++)
+	//				{
+	//					_ = ReadVarInteger();
+	//				}
+	//			}
+	//		}
+
+	//		// to get to the segment modifiers:
+	//		for (int j = 0; j < numCurves; j++)
+	//		{
+	//			_ = ReadVarUnsigned(); // startIndex
+	//			var segmentType = ReadVarUnsigned();
+
+	//			length += 4 + 4; // startIndex and curveType (both I32)
+
+	//			var modifierSize = GetSegmentModifierSize(segmentType);
+
+	//			length += modifierSize;
+
+	//			_blobIndex += modifierSize;
+	//		}
+
+	//		// Vertex IDs may follow, but their size is already known
+
+	//		_blobIndex = restore; // rewind
+	//	}
+
+	//	return length; // bytes for Shape Buffer
+	//}
+
+	//private int GetSegmentModifierSize(ulong segmentType)
+	//{
+	//	switch (segmentType)
+	//	{
+	//		case 1: // circular arc
+	//			return 8 + 8 + 4;
+	//		case 2: // linear (must not occur here)
+	//			throw Error($"Segment type {segmentType} (line) should not occur amongst the segment modifiers");
+	//		case 3: // spiral arc (undocumented)
+	//			throw Error($"Segment type {segmentType} (spiral arc) is not supported");
+	//		case 4: // cubic bezier arc
+	//			return 8 + 8 + 8 + 8;
+	//		case 5: // elliptic arc
+	//			return 8 + 8 + 8 + 8 + 8 + 4;
+	//		default:
+	//			throw Error($"Unknown segment type {segmentType}");
+	//	}
+	//}
+
+	//private static byte[] CreateEmptyMultipartShapeBuffer(uint shapeType)
+	//{
+	//	bool hasZ = ShapeBuffer.GetHasZ(shapeType);
+	//	bool hasM = ShapeBuffer.GetHasM(shapeType);
+	//	bool hasID = ShapeBuffer.GetHasID(shapeType);
+	//	int type = ShapeBuffer.GetShapeType(shapeType, hasZ, hasM, hasID);
+
+	//	int length = 4 + 4 * 8 + 4 + 4;
+	//	if (hasZ) length += 8 + 8;
+	//	if (hasM) length += 8 + 8;
+
+	//	var bytes = new byte[length];
+	//	int offset = 0;
+
+	//	offset += ShapeBuffer.WriteInt32(type, bytes, offset);
+
+	//	offset += ShapeBuffer.WriteDouble(double.NaN, bytes, offset); // xmin
+	//	offset += ShapeBuffer.WriteDouble(double.NaN, bytes, offset); // ymin
+	//	offset += ShapeBuffer.WriteDouble(double.NaN, bytes, offset); // xmax
+	//	offset += ShapeBuffer.WriteDouble(double.NaN, bytes, offset); // ymax
+
+	//	offset += ShapeBuffer.WriteInt32(0, bytes, offset); // numParts
+	//	offset += ShapeBuffer.WriteInt32(0, bytes, offset); // numPoints
+
+	//	if (hasZ)
+	//	{
+	//		offset += ShapeBuffer.WriteDouble(double.NaN, bytes, offset); // zmin
+	//		offset += ShapeBuffer.WriteDouble(double.NaN, bytes, offset); // zmax
+	//	}
+
+	//	if (hasM)
+	//	{
+	//		offset += ShapeBuffer.WriteDouble(double.NaN, bytes, offset); // mmin
+	//		offset += ShapeBuffer.WriteDouble(double.NaN, bytes, offset); // mmax
+	//	}
+
+	//	Debug.Assert(bytes.Length == offset);
+
+	//	return bytes;
+	//}
+
+	private void ReadXYs(ShapeFactory factory, int numPoints)
 	{
-		bool hasZ = ShapeBuffer.GetHasZ(shapeType);
-		bool hasM = ShapeBuffer.GetHasM(shapeType);
-		bool hasID = ShapeBuffer.GetHasID(shapeType);
-		int type = ShapeBuffer.GetShapeType(shapeType, hasZ, hasM, hasID);
-
-		int length = 4 + 4 * 8 + 4 + 4;
-		if (hasZ) length += 8 + 8;
-		if (hasM) length += 8 + 8;
-
-		var bytes = new byte[length];
-		int offset = 0;
-
-		offset += WriteInt32(type, bytes, offset);
-
-		offset += WriteDouble(double.NaN, bytes, offset); // xmin
-		offset += WriteDouble(double.NaN, bytes, offset); // ymin
-		offset += WriteDouble(double.NaN, bytes, offset); // xmax
-		offset += WriteDouble(double.NaN, bytes, offset); // ymax
-
-		offset += WriteInt32(0, bytes, offset); // numParts
-		offset += WriteInt32(0, bytes, offset); // numPoints
-
-		if (hasZ)
-		{
-			offset += WriteDouble(double.NaN, bytes, offset); // zmin
-			offset += WriteDouble(double.NaN, bytes, offset); // zmax
-		}
-
-		if (hasM)
-		{
-			offset += WriteDouble(double.NaN, bytes, offset); // mmin
-			offset += WriteDouble(double.NaN, bytes, offset); // mmax
-		}
-
-		Debug.Assert(bytes.Length == offset);
-
-		return bytes;
-	}
-
-	private int CopyXYs(int numPoints, byte[] bytes, int offset)
-	{
-		int startOffset = offset;
-
 		long dx = 0;
 		long dy = 0;
 
@@ -507,28 +691,21 @@ public class GeometryBlobReader
 			dy += iy;
 			double y = dy < 0 ? double.NaN : YOrigin + dy / XYScale;
 
-			offset += WriteDouble(x, bytes, offset);
-			offset += WriteDouble(y, bytes, offset);
+			factory.AddXY(x, y);
 		}
-
-		return offset - startOffset;
 	}
 
-	private int CopyZs(int numPoints, byte[] bytes, int offset)
+	private void ReadZs(ShapeFactory factory, int numPoints)
 	{
 		if (numPoints > 0 && !HasZ)
 		{
 			throw Error("Geometry BLOB has Z values but GeometryDef has no ZOrigin and ZScale for decoding");
 		}
 
-		int startOffset = offset;
-
 		// Unlike extended shape buffer format, the FGDB seems
 		// to not store min and max Z values, so we compute them.
 		// Shape Buffer stores Zmin,Zmax (as two NaNs) even if
 		// the shape is empty (i.e., if numPoints is zero).
-
-		offset += 16; // leave room for min/max Z
 
 		double zmin = double.MaxValue;
 		double zmax = double.MinValue;
@@ -542,33 +719,24 @@ public class GeometryBlobReader
 			// TODO check NaN (unsure; cannot enter NaN for Z in Pro UI)
 			double z = dz < 0 ? double.NaN : ZOrigin + dz / ZScale;
 
-			offset += WriteDouble(z, bytes, offset);
+			factory.AddZ(z);
 
 			if (z < zmin) zmin = z;
 			if (z > zmax) zmax = z;
 		}
 
-		WriteDouble(numPoints > 0 ? zmin : double.NaN, bytes, startOffset + 0);
-		WriteDouble(numPoints > 0 ? zmax : double.NaN, bytes, startOffset + 8);
-
-		return offset - startOffset;
+		if (numPoints > 0)
+		{
+			factory.SetMinMaxZ(zmin, zmax);
+		}
 	}
 
-	private int CopyMs(int numPoints, byte[] bytes, int offset)
+	private void ReadMs(ShapeFactory factory, int numPoints)
 	{
 		if (numPoints > 0 && !HasM)
 		{
 			throw Error("Geometry BLOB has M values but GeometryDef has no MOrigin and MScale for decoding");
 		}
-
-		int startOffset = offset;
-
-		// Unlike extended shape buffer format, the FGDB seems
-		// to not store min and max M values, so we compute them.
-		// Shape Buffer stores Mmin,Mmax (as two NaNs) even if
-		// the shape is empty (i.e., if numPoints is zero).
-
-		offset += 16; // leave room for min/max M
 
 		double mmin = double.PositiveInfinity;
 		double mmax = double.NegativeInfinity;
@@ -588,59 +756,45 @@ public class GeometryBlobReader
 
 			double m = dm < 0 ? double.NaN : MOrigin + dm / MScale;
 
-			offset += WriteDouble(m, bytes, offset);
+			factory.AddM(m);
 
 			if (m < mmin) mmin = m;
 			if (m > mmax) mmax = m;
 		}
 
-		WriteDouble(double.IsFinite(mmin) ? mmin : double.NaN, bytes, startOffset + 0);
-		WriteDouble(double.IsFinite(mmax) ? mmax : double.NaN, bytes, startOffset + 8);
-
-		return offset - startOffset;
+		if (double.IsFinite(mmin) && double.IsFinite(mmax))
+		{
+			factory.SetMinMaxM(mmin, mmax);
+		}
 	}
 
-	private int CopyIDs(int numPoints, byte[] bytes, int offset)
+	private void ReadIDs(ShapeFactory factory, int numPoints)
 	{
-		int startOffset = offset;
-
 		for (int i = 0; i < numPoints; i++)
 		{
 			long id = ReadVarInteger();
-			offset += WriteInt32(unchecked((int)id), bytes, offset);
+			factory.AddID(unchecked((int)id));
 		}
-
-		return offset - startOffset;
 	}
 
-	private int CopyCurves(int numCurves, byte[] bytes, int offset)
+	private void ReadCurves(ShapeFactory factory, int numCurves)
 	{
-		int startOffset = offset;
-
 		for (int i = 0; i < numCurves; i++)
 		{
 			ulong vu = ReadVarUnsigned();
 
 			if (vu > int.MaxValue)
 				throw Error($"Curve start index {vu} is too big for this API");
-
 			int startIndex = (int)vu;
-			offset += WriteInt32(startIndex, bytes, offset);
-
+			
 			ulong curveType = ReadVarUnsigned();
-
-			// TODO just copy bytes!?
-
 			switch (curveType)
 			{
 				case 1: // circular arc
 					var d1 = ReadDouble();
 					var d2 = ReadDouble();
 					var cFlags = ReadInt32();
-					offset += WriteInt32(1, bytes, offset);
-					offset += WriteDouble(d1, bytes, offset);
-					offset += WriteDouble(d2, bytes, offset);
-					offset += WriteInt32(cFlags, bytes, offset);
+					factory.AddCurve(new CircularArcModifier(startIndex, d1, d2, cFlags));
 					break;
 				case 2: // linear segment
 					throw Error($"Segment type {curveType} (line) should not occur");
@@ -651,11 +805,7 @@ public class GeometryBlobReader
 					var y1 = ReadDouble();
 					var x2 = ReadDouble();
 					var y2 = ReadDouble();
-					offset += WriteInt32((int)curveType, bytes, offset);
-					offset += WriteDouble(x1, bytes, offset);
-					offset += WriteDouble(y1, bytes, offset);
-					offset += WriteDouble(x2, bytes, offset);
-					offset += WriteDouble(y2, bytes, offset);
+					factory.AddCurve(new CubicBezierModifier(startIndex, x1, y1, x2, y2));
 					break;
 				case 5: // elliptic arc
 					var e1 = ReadDouble();
@@ -664,65 +814,212 @@ public class GeometryBlobReader
 					var e4 = ReadDouble();
 					var e5 = ReadDouble();
 					var eFlags = ReadInt32();
-					offset += WriteInt32((int)curveType, bytes, offset);
-					offset += WriteDouble(e1, bytes, offset);
-					offset += WriteDouble(e2, bytes, offset);
-					offset += WriteDouble(e3, bytes, offset);
-					offset += WriteDouble(e4, bytes, offset);
-					offset += WriteDouble(e5, bytes, offset);
-					offset += WriteInt32(eFlags, bytes, offset);
+					factory.AddCurve(new EllipticArcModifier(startIndex, e1, e2, e3, e4, e5, eFlags));
 					break;
 				default:
 					throw Error($"Unknown segment type: {curveType}");
 			}
 		}
-
-		return offset - startOffset;
 	}
 
-	private static int WriteInt32(int value, byte[] bytes, int offset)
+	//private int CopyXYs(int numPoints, byte[] bytes, int offset)
+	//{
+	//	int startOffset = offset;
+
+	//	long dx = 0;
+	//	long dy = 0;
+
+	//	for (int i = 0; i < numPoints; i++)
+	//	{
+	//		// TODO verify NaN encoding
+
+	//		long ix = ReadVarInteger();
+	//		dx += ix;
+	//		double x = dx < 0 ? double.NaN : XOrigin + dx / XYScale;
+
+	//		long iy = ReadVarInteger();
+	//		dy += iy;
+	//		double y = dy < 0 ? double.NaN : YOrigin + dy / XYScale;
+
+	//		offset += ShapeBuffer.WriteDouble(x, bytes, offset);
+	//		offset += ShapeBuffer.WriteDouble(y, bytes, offset);
+	//	}
+
+	//	return offset - startOffset;
+	//}
+
+	//private int CopyZs(int numPoints, byte[] bytes, int offset)
+	//{
+	//	if (numPoints > 0 && !HasZ)
+	//	{
+	//		throw Error("Geometry BLOB has Z values but GeometryDef has no ZOrigin and ZScale for decoding");
+	//	}
+
+	//	int startOffset = offset;
+
+	//	// Unlike extended shape buffer format, the FGDB seems
+	//	// to not store min and max Z values, so we compute them.
+	//	// Shape Buffer stores Zmin,Zmax (as two NaNs) even if
+	//	// the shape is empty (i.e., if numPoints is zero).
+
+	//	offset += 16; // leave room for min/max Z
+
+	//	double zmin = double.MaxValue;
+	//	double zmax = double.MinValue;
+
+	//	long dz = 0;
+	//	for (int i = 0; i < numPoints; i++)
+	//	{
+	//		long iz = ReadVarInteger();
+	//		dz += iz;
+
+	//		// TODO check NaN (unsure; cannot enter NaN for Z in Pro UI)
+	//		double z = dz < 0 ? double.NaN : ZOrigin + dz / ZScale;
+
+	//		offset += ShapeBuffer.WriteDouble(z, bytes, offset);
+
+	//		if (z < zmin) zmin = z;
+	//		if (z > zmax) zmax = z;
+	//	}
+
+	//	ShapeBuffer.WriteDouble(numPoints > 0 ? zmin : double.NaN, bytes, startOffset + 0);
+	//	ShapeBuffer.WriteDouble(numPoints > 0 ? zmax : double.NaN, bytes, startOffset + 8);
+
+	//	return offset - startOffset;
+	//}
+
+	//private int CopyMs(int numPoints, byte[] bytes, int offset)
+	//{
+	//	if (numPoints > 0 && !HasM)
+	//	{
+	//		throw Error("Geometry BLOB has M values but GeometryDef has no MOrigin and MScale for decoding");
+	//	}
+
+	//	int startOffset = offset;
+
+	//	// Unlike extended shape buffer format, the FGDB seems
+	//	// to not store min and max M values, so we compute them.
+	//	// Shape Buffer stores Mmin,Mmax (as two NaNs) even if
+	//	// the shape is empty (i.e., if numPoints is zero).
+
+	//	offset += 16; // leave room for min/max M
+
+	//	double mmin = double.PositiveInfinity;
+	//	double mmax = double.NegativeInfinity;
+
+	//	long dm = 0;
+	//	for (int i = 0; i < numPoints; i++)
+	//	{
+	//		if (dm != -2)
+	//		{
+	//			long im = ReadVarInteger();
+	//			dm += im;
+	//		}
+
+	//		// -1 means this M is NaN (?)
+	//		// -2 means all (remaining?) Ms are NaN (?)
+	//		// similar thing for Zs? with respect to zero?
+
+	//		double m = dm < 0 ? double.NaN : MOrigin + dm / MScale;
+
+	//		offset += ShapeBuffer.WriteDouble(m, bytes, offset);
+
+	//		if (m < mmin) mmin = m;
+	//		if (m > mmax) mmax = m;
+	//	}
+
+	//	ShapeBuffer.WriteDouble(double.IsFinite(mmin) ? mmin : double.NaN, bytes, startOffset + 0);
+	//	ShapeBuffer.WriteDouble(double.IsFinite(mmax) ? mmax : double.NaN, bytes, startOffset + 8);
+
+	//	return offset - startOffset;
+	//}
+
+	//private int CopyIDs(int numPoints, byte[] bytes, int offset)
+	//{
+	//	int startOffset = offset;
+
+	//	for (int i = 0; i < numPoints; i++)
+	//	{
+	//		long id = ReadVarInteger();
+	//		offset += ShapeBuffer.WriteInt32(unchecked((int)id), bytes, offset);
+	//	}
+
+	//	return offset - startOffset;
+	//}
+
+	//private int CopyCurves(int numCurves, byte[] bytes, int offset)
+	//{
+	//	int startOffset = offset;
+
+	//	for (int i = 0; i < numCurves; i++)
+	//	{
+	//		ulong vu = ReadVarUnsigned();
+
+	//		if (vu > int.MaxValue)
+	//			throw Error($"Curve start index {vu} is too big for this API");
+
+	//		int startIndex = (int)vu;
+	//		offset += ShapeBuffer.WriteInt32(startIndex, bytes, offset);
+
+	//		ulong curveType = ReadVarUnsigned();
+
+	//		// TODO just copy bytes!?
+
+	//		switch (curveType)
+	//		{
+	//			case 1: // circular arc
+	//				var d1 = ReadDouble();
+	//				var d2 = ReadDouble();
+	//				var cFlags = ReadInt32();
+	//				offset += ShapeBuffer.WriteInt32(1, bytes, offset);
+	//				offset += ShapeBuffer.WriteDouble(d1, bytes, offset);
+	//				offset += ShapeBuffer.WriteDouble(d2, bytes, offset);
+	//				offset += ShapeBuffer.WriteInt32(cFlags, bytes, offset);
+	//				break;
+	//			case 2: // linear segment
+	//				throw Error($"Segment type {curveType} (line) should not occur");
+	//			case 3: // spiral arc
+	//				throw Error($"Segment type {curveType} (spiral arc) is not supported");
+	//			case 4: // bezier arc
+	//				var x1 = ReadDouble();
+	//				var y1 = ReadDouble();
+	//				var x2 = ReadDouble();
+	//				var y2 = ReadDouble();
+	//				offset += ShapeBuffer.WriteInt32((int)curveType, bytes, offset);
+	//				offset += ShapeBuffer.WriteDouble(x1, bytes, offset);
+	//				offset += ShapeBuffer.WriteDouble(y1, bytes, offset);
+	//				offset += ShapeBuffer.WriteDouble(x2, bytes, offset);
+	//				offset += ShapeBuffer.WriteDouble(y2, bytes, offset);
+	//				break;
+	//			case 5: // elliptic arc
+	//				var e1 = ReadDouble();
+	//				var e2 = ReadDouble();
+	//				var e3 = ReadDouble();
+	//				var e4 = ReadDouble();
+	//				var e5 = ReadDouble();
+	//				var eFlags = ReadInt32();
+	//				offset += ShapeBuffer.WriteInt32((int)curveType, bytes, offset);
+	//				offset += ShapeBuffer.WriteDouble(e1, bytes, offset);
+	//				offset += ShapeBuffer.WriteDouble(e2, bytes, offset);
+	//				offset += ShapeBuffer.WriteDouble(e3, bytes, offset);
+	//				offset += ShapeBuffer.WriteDouble(e4, bytes, offset);
+	//				offset += ShapeBuffer.WriteDouble(e5, bytes, offset);
+	//				offset += ShapeBuffer.WriteInt32(eFlags, bytes, offset);
+	//				break;
+	//			default:
+	//				throw Error($"Unknown segment type: {curveType}");
+	//		}
+	//	}
+
+	//	return offset - startOffset;
+	//}
+
+	private uint ReadShapeType()
 	{
-		if (bytes is null)
-			throw new ArgumentNullException(nameof(bytes));
-		if (offset < 0)
-			throw new ArgumentOutOfRangeException(nameof(offset));
-		if (offset + 4 > bytes.Length)
-			throw new ArgumentException("overflow", nameof(bytes));
-
-		// little endian
-		bytes[offset+0] = (byte)(value & 255);
-		bytes[offset+1] = (byte)((value >> 8) & 255);
-		bytes[offset+2] = (byte)((value >> 16) & 255);
-		bytes[offset+3] = (byte)((value >> 24) & 255);
-
-		return 4; // bytes written
-	}
-
-	private static int WriteDouble(double value, byte[] bytes, int offset = 0)
-	{
-		if (bytes is null)
-			throw new ArgumentNullException(nameof(bytes));
-		if (offset < 0)
-			throw new ArgumentOutOfRangeException(nameof(offset));
-		if (offset + 8 > bytes.Length)
-			throw new ArgumentException("overflow", nameof(bytes));
-
-		// Empirical: Pro SDK Geometry.ToEsriShape() writes NaN as double.MinValue (FF:FF:FF:FF:FF:FF:EF:FF)
-		// ShapeBufferHelper methods have a flag "writeTrueNaNs" (controls NaN vs MinValue), but don't know how this flag is used
-
-		var bits = BitConverter.DoubleToUInt64Bits(value);
-
-		// little endian
-		bytes[offset+0] = (byte)(bits & 255);
-		bytes[offset+1] = (byte)((bits >> 8) & 255);
-		bytes[offset+2] = (byte)((bits >> 16) & 255);
-		bytes[offset+3] = (byte)((bits >> 24) & 255);
-		bytes[offset+4] = (byte)((bits >> 32) & 255);
-		bytes[offset+5] = (byte)((bits >> 40) & 255);
-		bytes[offset+6] = (byte)((bits >> 48) & 255);
-		bytes[offset+7] = (byte)((bits >> 56) & 255);
-
-		return 8; // bytes written
+		ulong value = ReadVarUnsigned();
+		if (value > uint.MaxValue)
+			throw Error($"Shape type value too large: {value}");
+		return (uint)value;
 	}
 
 	private void ReadBoxXY(out double xmin, out double ymin, out double xmax, out double ymax)
@@ -805,20 +1102,21 @@ public class GeometryBlobReader
 			throw ReadingBeyondBlob();
 		}
 
-		byte b0 = _blob[_blobIndex++];
-		byte b1 = _blob[_blobIndex++];
-		byte b2 = _blob[_blobIndex++];
-		byte b3 = _blob[_blobIndex++];
-		byte b4 = _blob[_blobIndex++];
-		byte b5 = _blob[_blobIndex++];
-		byte b6 = _blob[_blobIndex++];
-		byte b7 = _blob[_blobIndex++];
+		// read bytes into uint (C# casts shifts on byte to (signed) int)
+		uint b0 = _blob[_blobIndex++];
+		uint b1 = _blob[_blobIndex++];
+		uint b2 = _blob[_blobIndex++];
+		uint b3 = _blob[_blobIndex++];
+		uint b4 = _blob[_blobIndex++];
+		uint b5 = _blob[_blobIndex++];
+		uint b6 = _blob[_blobIndex++];
+		uint b7 = _blob[_blobIndex++];
 
 		// little endian
-		long lo = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
-		long hi = b4 | (b5 << 8) | (b6 << 16) | (b7 << 24);
+		ulong lo = b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+		ulong hi = b4 | (b5 << 8) | (b6 << 16) | (b7 << 24);
 
-		return BitConverter.Int64BitsToDouble((hi << 32) | lo);
+		return BitConverter.UInt64BitsToDouble((hi << 32) | lo);
 	}
 
 	private FileGDBException Error(string? message)

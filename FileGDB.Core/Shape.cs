@@ -1,6 +1,8 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Text;
 
@@ -38,30 +40,69 @@ public abstract class Shape
 	public bool HasM => ShapeBuffer.GetHasM(_shapeType);
 	public bool HasID => ShapeBuffer.GetHasID(_shapeType);
 
-	public const double DefaultZ = 0.0;
-	public const double DefaultM = double.NaN;
-	public const int DefaultID = 0;
+	protected const double DefaultZ = ShapeBuffer.DefaultZ;
+	protected const double DefaultM = ShapeBuffer.DefaultM;
+	protected const int DefaultID = ShapeBuffer.DefaultID;
 
 	protected Shape(uint shapeType)
 	{
 		_shapeType = shapeType;
 	}
 
+	public uint GetShapeType() => _shapeType;
+
 	public BoxShape Box => _box ??= GetBox();
 
 	public abstract bool IsEmpty { get; }
 
-	public abstract string ToWKT(int decimalDigits = -1);
-	// TODO overloads void ToWKT(StringBuilder) and ToWKT(TextWriter)
+	public string ToWKT(int decimalDigits = -1)
+	{
+		var buffer = new StringBuilder();
+		ToWKT(buffer, decimalDigits);
+		return buffer.ToString();
+	}
 
-	// Shape FromShapeBuffer(byte[] bytes)
-	// byte[] ToShapeBuffer(byte[] bytes = null)
+	public void ToWKT(StringBuilder buffer, int decimalDigits = -1)
+	{
+		var writer = new StringWriter(buffer);
+		ToWKT(writer, decimalDigits);
+		writer.Flush();
+	}
+
+	public void ToWKT(TextWriter writer, int decimalDigits = -1)
+	{
+		var wkt = new WKTWriter(writer) { DecimalDigits = decimalDigits };
+		ToWKT(wkt);
+		wkt.Flush();
+	}
+
+	protected abstract void ToWKT(WKTWriter wkt);
+
+	public byte[] ToShapeBuffer()
+	{
+		int length = ToShapeBuffer(null);
+		var bytes = new byte[length];
+		ToShapeBuffer(bytes);
+		return bytes;
+	}
+
+	public abstract int ToShapeBuffer(byte[]? bytes, int offset = 0);
+
+	public static Shape FromShapeBuffer(byte[] bytes)
+	{
+		if (bytes is null)
+			throw new ArgumentNullException(nameof(bytes));
+
+		throw new NotImplementedException();
+	}
 
 	public Shape SetBox(BoxShape box)
 	{
 		_box = box; // null is ok (box will be lazily computed)
 		return this;
 	}
+
+	public static NullShape Null => NullShape.Instance;
 
 	protected abstract BoxShape GetBox();
 
@@ -99,9 +140,12 @@ public abstract class Shape
 				throw new ArgumentOutOfRangeException(nameof(type), type, null);
 		}
 
-		if ((flags & ShapeFlags.HasZ) != 0) result |= (uint)ShapeBuffer.Flags.HasZ;
-		if ((flags & ShapeFlags.HasM) != 0) result |= (uint)ShapeBuffer.Flags.HasM;
-		if ((flags & ShapeFlags.HasID) != 0) result |= (uint)ShapeBuffer.Flags.HasID;
+		if ((flags & ShapeFlags.HasZ) != 0)
+			result |= (uint)ShapeBuffer.Flags.HasZ;
+		if ((flags & ShapeFlags.HasM) != 0)
+			result |= (uint)ShapeBuffer.Flags.HasM;
+		if ((flags & ShapeFlags.HasID) != 0)
+			result |= (uint)ShapeBuffer.Flags.HasID;
 		// MultiPatch flags: Materials, Normals, Textures, PartIDs
 
 		if (type == GeometryType.Polyline || type == GeometryType.Polygon)
@@ -166,6 +210,11 @@ public abstract class Shape
 		if (ShapeBuffer.GetHasID(shapeType)) flags |= ShapeFlags.HasID;
 		return flags;
 	}
+
+	protected static Exception Bug(string message)
+	{
+		return new InvalidOperationException($"Bug: {message}");
+	}
 }
 
 public class BoxShape : Shape
@@ -208,14 +257,45 @@ public class BoxShape : Shape
 									double.IsNaN(YMin) || double.IsNaN(YMax) ||
 									XMin > XMax || YMin > YMax;
 
-	public override string ToWKT(int decimalDigits = -1)
+	protected override void ToWKT(WKTWriter wkt)
 	{
-		var buffer = new StringBuilder();
-		var writer = new WKTWriter(buffer) { DecimalDigits = decimalDigits };
-		writer.WriteBox(XMin, YMin, XMax, YMax, ZMin, ZMax, MMin, MMax);
-		writer.Flush();
-		return buffer.ToString();
+		wkt.WriteBox(XMin, YMin, XMax, YMax, ZMin, ZMax, MMin, MMax);
 	}
+
+	public override int ToShapeBuffer(byte[]? bytes, int offset = 0)
+	{
+		// We could emit a 5-point Polygon instead, but then we loose
+		// the information that this is indeed a bounding box and, worse,
+		// we would have to invent Z,M,ID from the envelope's min/max values.
+		throw new NotSupportedException("There is no shape buffer defined for a bounding box (aka envelope)");
+	}
+}
+
+public class NullShape : Shape
+{
+	private NullShape() : base((uint)ShapeType.Null) { }
+
+	public override bool IsEmpty => true;
+
+	protected override void ToWKT(WKTWriter wkt)
+	{
+		throw new NotSupportedException("Cannot write Null shape as WKT");
+	}
+
+	public override int ToShapeBuffer(byte[]? bytes, int offset = 0)
+	{
+		const int length = 4;
+		if (bytes is null || bytes.Length - offset < length) return length;
+		return ShapeBuffer.WriteShapeType((uint)ShapeType.Null, bytes, offset);
+	}
+
+	protected override BoxShape GetBox()
+	{
+		return NullBox;
+	}
+
+	public static readonly NullShape Instance = new();
+	private static readonly BoxShape NullBox = new(ShapeFlags.None, double.NaN, double.NaN, double.NaN, double.NaN);
 }
 
 public class PointShape : Shape
@@ -257,13 +337,45 @@ public class PointShape : Shape
 
 	public override bool IsEmpty => double.IsNaN(X) || double.IsNaN(Y);
 
-	public override string ToWKT(int decimalDigits = -1)
+	protected override void ToWKT(WKTWriter wkt)
 	{
-		var buffer = new StringBuilder();
-		var writer = new WKTWriter(buffer) { DecimalDigits = decimalDigits };
-		writer.WritePoint(X, Y, Z, M, ID);
-		writer.Flush();
-		return buffer.ToString();
+		wkt.BeginPoint(HasZ, HasM, HasID);
+		wkt.AddVertex(X, Y, Z, M, ID);
+		wkt.EndShape();
+	}
+
+	public override int ToShapeBuffer(byte[]? bytes, int offset = 0)
+	{
+		if (offset < 0)
+			throw new ArgumentOutOfRangeException(nameof(offset));
+
+		int length = ShapeBuffer.GetPointBufferSize(HasZ, HasM, HasID);
+		if (bytes is null || bytes.Length - offset < length)
+			return length;
+
+		var shapeType = GetShapeType();
+		offset += ShapeBuffer.WriteShapeType(shapeType, bytes, offset);
+
+		if (IsEmpty)
+		{
+			offset += ShapeBuffer.WriteDouble(double.NaN, bytes, offset);
+			offset += ShapeBuffer.WriteDouble(double.NaN, bytes, offset);
+			if (HasZ) offset += ShapeBuffer.WriteDouble(DefaultZ, bytes, offset);
+			if (HasM) offset += ShapeBuffer.WriteDouble(DefaultM, bytes, offset);
+			if (HasID) offset += ShapeBuffer.WriteInt32(DefaultID, bytes, offset);
+		}
+		else
+		{
+			offset += ShapeBuffer.WriteDouble(X, bytes, offset);
+			offset += ShapeBuffer.WriteDouble(Y, bytes, offset);
+			if (HasZ) offset += ShapeBuffer.WriteDouble(Z, bytes, offset);
+			if (HasM) offset += ShapeBuffer.WriteDouble(M, bytes, offset);
+			if (HasID) offset += ShapeBuffer.WriteInt32(ID, bytes, offset);
+		}
+
+		Debug.Assert(bytes.Length == offset);
+
+		return length;
 	}
 }
 
@@ -366,43 +478,114 @@ public class MultipointShape : PointListShape
 		return flags;
 	}
 
-	public override string ToWKT(int decimalDigits = -1)
+	protected override void ToWKT(WKTWriter wkt)
 	{
-		var buffer = new StringBuilder();
-		var writer = new WKTWriter(buffer) { DecimalDigits = decimalDigits };
-		writer.BeginMultipoint(HasZ, HasM, HasID);
+		wkt.BeginMultipoint(HasZ, HasM, HasID);
 		for (int i = 0; i < NumPoints; i++)
 		{
 			var xy = CoordsXY[i];
 			var z = CoordsZ is null ? DefaultZ : CoordsZ[i];
 			var m = CoordsM is null ? DefaultM : CoordsM[i];
 			var id = CoordsID is null ? DefaultID : CoordsID[i];
-			writer.AddVertex(xy.X, xy.Y, z, m, id);
+			wkt.AddVertex(xy.X, xy.Y, z, m, id);
 		}
-		writer.EndShape();
-		writer.Flush();
-		return buffer.ToString();
+		wkt.EndShape();
+	}
+
+	public override int ToShapeBuffer(byte[]? bytes, int offset = 0)
+	{
+		if (offset < 0)
+			throw new ArgumentOutOfRangeException(nameof(offset));
+
+		int length = ShapeBuffer.GetMultipointBufferSize(HasZ, HasM, HasID, NumPoints);
+		if (bytes is null || bytes.Length - offset < length)
+			return length;
+
+		// Empty Multipoint is handled implicitly: zero for numPoints,
+		// NaN for all min/max values (including Z and M if hasZ/M)
+
+		var shapeType = GetShapeType();
+		offset += ShapeBuffer.WriteShapeType(shapeType, bytes, offset);
+
+		var box = Box;
+		offset += ShapeBuffer.WriteDouble(box.XMin, bytes, offset);
+		offset += ShapeBuffer.WriteDouble(box.YMin, bytes, offset);
+		offset += ShapeBuffer.WriteDouble(box.XMax, bytes, offset);
+		offset += ShapeBuffer.WriteDouble(box.YMax, bytes, offset);
+
+		var numPoints = NumPoints;
+		offset += ShapeBuffer.WriteInt32(numPoints, bytes, offset);
+
+		var xys = CoordsXY;
+		for (int i = 0; i < numPoints; i++)
+		{
+			offset += ShapeBuffer.WriteDouble(xys[i].X, bytes, offset);
+			offset += ShapeBuffer.WriteDouble(xys[i].Y, bytes, offset);
+		}
+
+		if (HasZ)
+		{
+			offset += ShapeBuffer.WriteDouble(box.ZMin, bytes, offset);
+			offset += ShapeBuffer.WriteDouble(box.ZMax, bytes, offset);
+
+			var zs = CoordsZ ?? throw Bug("HasZ is true but CoordsZ is null");
+			for (int i = 0; i < numPoints; i++)
+			{
+				offset += ShapeBuffer.WriteDouble(zs[i], bytes, offset);
+			}
+		}
+
+		if (HasM)
+		{
+			offset += ShapeBuffer.WriteDouble(box.MMin, bytes, offset);
+			offset += ShapeBuffer.WriteDouble(box.MMax, bytes, offset);
+
+			var ms = CoordsM ?? throw Bug("HasM is true but CoordsM is null");
+			for (int i = 0; i < numPoints; i++)
+			{
+				offset += ShapeBuffer.WriteDouble(ms[i], bytes, offset);
+			}
+		}
+
+		if (HasID)
+		{
+			var ids = CoordsID ?? throw Bug("HasID is true but CoordsID is null");
+			for (int i = 0; i < numPoints; i++)
+			{
+				offset += ShapeBuffer.WriteInt32(ids[i], bytes, offset);
+			}
+		}
+
+		Debug.Assert(bytes.Length == offset);
+
+		return length;
 	}
 }
 
 public abstract class MultipartShape : PointListShape
 {
 	private readonly IReadOnlyList<int>? _partStarts;
+	private readonly IReadOnlyList<SegmentModifier>? _curves;
 
 	protected MultipartShape(uint shapeType,
 		IReadOnlyList<XY> xys, IReadOnlyList<double>? zs = null,
 		IReadOnlyList<double>? ms = null, IReadOnlyList<int>? ids = null,
-		IReadOnlyList<int>? partVertexCounts = null)
+		IReadOnlyList<int>? partVertexCounts = null,
+		IReadOnlyList<SegmentModifier>? curves = null)
 		: base(shapeType, xys, zs, ms, ids)
 	{
 		_partStarts = GetPartStarts(partVertexCounts, NumPoints);
+		_curves = curves; // can be null
+		// TODO verify curves are ordered by increasing segmentIndex!
 	}
 
-	private static int[] GetPartStarts(IReadOnlyList<int>? partVertexCounts, int totalVertexCount)
+	public IReadOnlyList<SegmentModifier> Curves => _curves ?? Array.Empty<SegmentModifier>();
+
+	private static int[]? GetPartStarts(IReadOnlyList<int>? partVertexCounts, int totalVertexCount)
 	{
 		if (partVertexCounts is null)
 		{
-			return null!; // ?? new[] { 0 };
+			return null;
 		}
 
 		int startIndex = 0;
@@ -425,6 +608,8 @@ public abstract class MultipartShape : PointListShape
 	}
 
 	public int NumParts => _partStarts?.Count ?? 1;
+
+	public int NumCurves => _curves?.Count ?? 0;
 
 	/// <returns>Index into coordinate lists where part <paramref name="partIndex"/> starts</returns>
 	/// <remarks>Returns 0 or NumPoints if <paramref name="partIndex"/> is out of range </remarks>
@@ -454,6 +639,16 @@ public abstract class MultipartShape : PointListShape
 		count = nextStart - start;
 	}
 
+	protected IReadOnlyList<SegmentModifier>? GetPartCurves(int partIndex)
+	{
+		if (_curves is null) return null;
+		int start = GetPartStart(partIndex);
+		int limit = GetPartStart(partIndex + 1);
+		return _curves
+			.Where(c => start <= c.SegmentIndex && c.SegmentIndex < limit)
+			.ToList();
+	}
+
 	protected void WriteCoordinates(WKTWriter writer)
 	{
 		for (int i = 0, j = 0; i < NumPoints; i++)
@@ -474,6 +669,114 @@ public abstract class MultipartShape : PointListShape
 			writer.AddVertex(xy.X, xy.Y, z, m, id);
 		}
 	}
+
+	public override int ToShapeBuffer(byte[]? bytes, int offset = 0)
+	{
+		if (offset < 0)
+			throw new ArgumentOutOfRangeException(nameof(offset));
+
+		var shapeType = GetShapeType();
+		int length = ShapeBuffer.GetMultipartBufferSize(HasZ, HasM, HasID, NumParts, NumPoints);
+
+		bool mayHaveCurves = ShapeBuffer.GetMayHaveCurves(shapeType);
+		int numCurves = NumCurves;
+
+		if (mayHaveCurves || numCurves > 0) length += 4;
+
+		foreach (var modifier in _curves)
+		{
+			length += 4 + 4; // startIndex and curveType
+
+			switch (modifier)
+			{
+				case CircularArcModifier:
+					length += 8 + 8 + 4;
+					break;
+				case CubicBezierModifier:
+					length += 8 + 8 + 8 + 8;
+					break;
+				case EllipticArcModifier:
+					length += 8 + 8 + 8 + 8 + 8 + 4;
+					break;
+				default:
+					throw new NotSupportedException(
+						$"Unknown segment modifier: {modifier.GetType().Name} " +
+						$"(curve type {modifier.CurveType})");
+			}
+		}
+
+		if (bytes is null || bytes.Length - offset < length)
+			return length;
+
+		// Empty Multipart is handled implicitly: zero for numPoints and numParts,
+		// NaN for all min/max values (including Zmin/max if hasZ and Mmin/max if hasM)
+
+		offset += ShapeBuffer.WriteShapeType(shapeType, bytes, offset);
+
+		var box = Box;
+		offset += ShapeBuffer.WriteDouble(box.XMin, bytes, offset);
+		offset += ShapeBuffer.WriteDouble(box.YMin, bytes, offset);
+		offset += ShapeBuffer.WriteDouble(box.XMax, bytes, offset);
+		offset += ShapeBuffer.WriteDouble(box.YMax, bytes, offset);
+
+		var numPoints = NumPoints;
+		offset += ShapeBuffer.WriteInt32(numPoints, bytes, offset);
+
+		var xys = CoordsXY;
+		for (int i = 0; i < numPoints; i++)
+		{
+			offset += ShapeBuffer.WriteDouble(xys[i].X, bytes, offset);
+			offset += ShapeBuffer.WriteDouble(xys[i].Y, bytes, offset);
+		}
+
+		if (HasZ)
+		{
+			offset += ShapeBuffer.WriteDouble(box.ZMin, bytes, offset);
+			offset += ShapeBuffer.WriteDouble(box.ZMax, bytes, offset);
+
+			var zs = CoordsZ ?? throw Bug("HasZ is true but CoordsZ is null");
+			for (int i = 0; i < numPoints; i++)
+			{
+				offset += ShapeBuffer.WriteDouble(zs[i], bytes, offset);
+			}
+		}
+
+		if (HasM)
+		{
+			offset += ShapeBuffer.WriteDouble(box.MMin, bytes, offset);
+			offset += ShapeBuffer.WriteDouble(box.MMax, bytes, offset);
+
+			var ms = CoordsM ?? throw Bug("HasM is true but CoordsM is null");
+			for (int i = 0; i < numPoints; i++)
+			{
+				offset += ShapeBuffer.WriteDouble(ms[i], bytes, offset);
+			}
+		}
+
+		if (numCurves > 0)
+		{
+			offset += ShapeBuffer.WriteInt32(numCurves, bytes, offset);
+
+			for (int i = 0; i < numCurves; i++)
+			{
+				var modifier = _curves[i];
+				offset += modifier.WriteShapeBuffer(bytes, offset);
+			}
+		}
+
+		if (HasID)
+		{
+			var ids = CoordsID ?? throw Bug("HasID is true but CoordsID is null");
+			for (int i = 0; i < numPoints; i++)
+			{
+				offset += ShapeBuffer.WriteInt32(ids[i], bytes, offset);
+			}
+		}
+
+		Debug.Assert(bytes.Length == offset);
+
+		return length;
+	}
 }
 
 public class PolylineShape : MultipartShape
@@ -482,10 +785,13 @@ public class PolylineShape : MultipartShape
 	private ReadOnlyParts? _parts;
 
 	public PolylineShape(ShapeFlags flags,
-		IReadOnlyList<XY> xys, IReadOnlyList<double>? zs = null,
-		IReadOnlyList<double>? ms = null, IReadOnlyList<int>? ids = null,
-		IReadOnlyList<int>? partStarts = null)
-		: base(GetShapeType(GeometryType.Polyline, flags), xys, zs, ms, ids, partStarts)
+		IReadOnlyList<XY> xys,
+		IReadOnlyList<double>? zs = null,
+		IReadOnlyList<double>? ms = null,
+		IReadOnlyList<int>? ids = null,
+		IReadOnlyList<int>? partStarts = null,
+		IReadOnlyList<SegmentModifier>? curves = null)
+		: base(GetShapeType(GeometryType.Polyline, flags), xys, zs, ms, ids, partStarts, curves)
 	{ }
 
 	public IReadOnlyList<PolylineShape> Parts => _parts ??= new ReadOnlyParts(this);
@@ -513,26 +819,19 @@ public class PolylineShape : MultipartShape
 			var zs = CoordsZ is not null ? new ReadOnlySubList<double>(CoordsZ, start, count) : null;
 			var ms = CoordsM is not null ? new ReadOnlySubList<double>(CoordsM, start, count) : null;
 			var ids = CoordsID is not null ? new ReadOnlySubList<int>(CoordsID, start, count) : null;
+			var curves = GetPartCurves(partIndex);
 
-			_partsCache[partIndex] = new PolylineShape(Flags, xys, zs, ms, ids);
+			_partsCache[partIndex] = new PolylineShape(Flags, xys, zs, ms, ids, null, curves);
 		}
 
 		return _partsCache[partIndex]!;
 	}
 
-	public override string ToWKT(int decimalDigits = -1)
+	protected override void ToWKT(WKTWriter wkt)
 	{
-		var buffer = new StringBuilder();
-		var writer = new WKTWriter(buffer) { DecimalDigits = decimalDigits };
-
-		writer.BeginMultiLineString(HasZ, HasM, HasID);
-
-		WriteCoordinates(writer);
-
-		writer.EndShape();
-		writer.Flush();
-
-		return buffer.ToString();
+		wkt.BeginMultiLineString(HasZ, HasM, HasID);
+		WriteCoordinates(wkt);
+		wkt.EndShape();
 	}
 
 	private class ReadOnlyParts : IReadOnlyList<PolylineShape>
@@ -569,10 +868,13 @@ public class PolygonShape : MultipartShape
 	private ReadOnlyParts? _parts;
 
 	public PolygonShape(ShapeFlags flags,
-		IReadOnlyList<XY> xys, IReadOnlyList<double>? zs = null,
-		IReadOnlyList<double>? ms = null, IReadOnlyList<int>? ids = null,
-		IReadOnlyList<int>? partStarts = null)
-		: base(GetShapeType(GeometryType.Polygon, flags), xys, zs, ms, ids, partStarts)
+		IReadOnlyList<XY> xys,
+		IReadOnlyList<double>? zs = null,
+		IReadOnlyList<double>? ms = null,
+		IReadOnlyList<int>? ids = null,
+		IReadOnlyList<int>? partStarts = null,
+		IReadOnlyList<SegmentModifier>? curves = null)
+		: base(GetShapeType(GeometryType.Polygon, flags), xys, zs, ms, ids, partStarts, curves)
 	{ }
 
 	public IReadOnlyList<PolygonShape> Parts => _parts ??= new ReadOnlyParts(this);
@@ -600,26 +902,19 @@ public class PolygonShape : MultipartShape
 			var zs = CoordsZ is not null ? new ReadOnlySubList<double>(CoordsZ, start, count) : null;
 			var ms = CoordsM is not null ? new ReadOnlySubList<double>(CoordsM, start, count) : null;
 			var ids = CoordsID is not null ? new ReadOnlySubList<int>(CoordsID, start, count) : null;
+			var curves = GetPartCurves(partIndex);
 
-			_partsCache[partIndex] = new PolygonShape(Flags, xys, zs, ms, ids);
+			_partsCache[partIndex] = new PolygonShape(Flags, xys, zs, ms, ids, null, curves);
 		}
 
 		return _partsCache[partIndex]!;
 	}
 
-	public override string ToWKT(int decimalDigits = -1)
+	protected override void ToWKT(WKTWriter wkt)
 	{
-		var buffer = new StringBuilder();
-		var writer = new WKTWriter(buffer) { DecimalDigits = decimalDigits };
-
-		writer.BeginMultiPolygon(HasZ, HasM, HasID);
-
-		WriteCoordinates(writer);
-
-		writer.EndShape();
-		writer.Flush();
-
-		return buffer.ToString();
+		wkt.BeginMultiPolygon(HasZ, HasM, HasID);
+		WriteCoordinates(wkt);
+		wkt.EndShape();
 	}
 
 	private class ReadOnlyParts : IReadOnlyList<PolygonShape>
@@ -647,6 +942,129 @@ public class PolygonShape : MultipartShape
 				yield return _parent.GetPart(i);
 			}
 		}
+	}
+}
+
+public abstract class SegmentModifier
+{
+	public int SegmentIndex { get; }
+	public abstract int CurveType { get; }
+
+	protected SegmentModifier(int segmentIndex)
+	{
+		SegmentIndex = segmentIndex;
+	}
+
+	public abstract int GetShapeBufferSize();
+
+	public int WriteShapeBuffer(byte[] bytes, int offset)
+	{
+		int startOffset = offset;
+		offset += ShapeBuffer.WriteInt32(SegmentIndex, bytes, offset);
+		offset += ShapeBuffer.WriteInt32(CurveType, bytes, offset);
+		offset += WriteShapeBufferCore(bytes, offset);
+		return offset - startOffset;
+	}
+
+	protected abstract int WriteShapeBufferCore(byte[] bytes, int offset);
+}
+
+public class CircularArcModifier : SegmentModifier
+{
+	public override int CurveType => 1;
+	public double D1 { get; } // center point X | start angle
+	public double D2 { get; } // center point Y | end angle
+	public int Flags { get; } // see ext shp buf fmt
+
+	public CircularArcModifier(int segmentIndex, double d1, double d2, int flags)
+		: base(segmentIndex)
+	{
+		D1 = d1;
+		D2 = d2;
+		Flags = flags;
+	}
+
+	public override int GetShapeBufferSize()
+	{
+		return 4 + 4 + 8 + 8 + 4; // index, type, 2 doubles, flags
+	}
+
+	protected override int WriteShapeBufferCore(byte[] bytes, int offset)
+	{
+		ShapeBuffer.WriteDouble(D1, bytes, offset + 0);
+		ShapeBuffer.WriteDouble(D2, bytes, offset + 8);
+		ShapeBuffer.WriteDouble(Flags, bytes, offset + 16);
+		return 8 + 8 + 4;
+	}
+}
+
+public class CubicBezierModifier : SegmentModifier
+{
+	public override int CurveType => 4;
+	public double ControlPoint1X { get; }
+	public double ControlPoint1Y { get; }
+	public double ControlPoint2X { get; }
+	public double ControlPoint2Y { get; }
+
+	public CubicBezierModifier(int segmentIndex, double cp1X, double cp1Y, double cp2X, double cp2Y)
+		: base(segmentIndex)
+	{
+		ControlPoint1X = cp1X;
+		ControlPoint1Y = cp1Y;
+		ControlPoint2X = cp1X;
+		ControlPoint2Y = cp1Y;
+	}
+
+	public override int GetShapeBufferSize()
+	{
+		return 4 + 4 + 4 * 8; // index, type, 4 doubles
+	}
+
+	protected override int WriteShapeBufferCore(byte[] bytes, int offset)
+	{
+		ShapeBuffer.WriteDouble(ControlPoint1X, bytes, offset + 0);
+		ShapeBuffer.WriteDouble(ControlPoint1Y, bytes, offset + 8);
+		ShapeBuffer.WriteDouble(ControlPoint2X, bytes, offset + 16);
+		ShapeBuffer.WriteDouble(ControlPoint2Y, bytes, offset + 24);
+		return 4 * 8;
+	}
+}
+
+public class EllipticArcModifier : SegmentModifier
+{
+	public override int CurveType => 5;
+	public double D1 { get; } // centerPoint.X | V1
+	public double D2 { get; } // centerPoint.Y | V2
+	public double D3 { get; } // rotation | fromV
+	public double D4 { get; } // semi major axis
+	public double D5 { get; } // minor/major ratio | deltaV
+	public int Flags { get; } // see ext shp buf fmt
+
+	public EllipticArcModifier(int segmentIndex, double d1, double d2, double d3, double d4, double d5, int flags)
+		: base(segmentIndex)
+	{
+		D1 = d1;
+		D2 = d2;
+		D3 = d3;
+		D4 = d4;
+		D5 = d5;
+		Flags = flags;
+	}
+
+	public override int GetShapeBufferSize()
+	{
+		return 4 + 4 + 5 * 8 + 4; // index, type, 5 doubles, flags
+	}
+
+	protected override int WriteShapeBufferCore(byte[] bytes, int offset)
+	{
+		ShapeBuffer.WriteDouble(D1, bytes, offset + 0);
+		ShapeBuffer.WriteDouble(D2, bytes, offset + 8);
+		ShapeBuffer.WriteDouble(D3, bytes, offset + 16);
+		ShapeBuffer.WriteDouble(D4, bytes, offset + 24);
+		ShapeBuffer.WriteDouble(D5, bytes, offset + 32);
+		ShapeBuffer.WriteDouble(Flags, bytes, offset + 40);
+		return 5 * 8 + 4;
 	}
 }
 
@@ -728,249 +1146,4 @@ public enum ShapeType
 
 	// Custom additions
 	Box = 254
-}
-
-public class ShapeFactory
-{
-	private readonly List<int> _parts = new();
-	private readonly List<XY> _xys = new();
-	private readonly List<double> _zs = new();
-	private readonly List<double> _ms = new();
-	private readonly List<int> _ids = new();
-
-	private double _xmin = double.NaN;
-	private double _ymin = double.NaN;
-	private double _xmax = double.NaN;
-	private double _ymax = double.NaN;
-	private double _zmin = double.NaN;
-	private double _zmax = double.NaN;
-	private double _mmin = double.NaN;
-	private double _mmax = double.NaN;
-
-	public GeometryType Type { get; private set; }
-	public bool HasZ { get; private set; }
-	public bool HasM { get; private set; }
-	public bool HasID { get; private set; }
-	public int NumParts { get; private set; }
-	public int NumPoints { get; private set; }
-	public int NumCurves { get; private set; }
-
-	public void Initialize(
-		GeometryType type, bool hasZ, bool hasM, bool hasID,
-		int numPoints = 1, int numParts = 1, int numCurves = 0)
-	{
-		Type = type;
-		HasZ = hasZ;
-		HasM = hasM;
-		HasID = hasID;
-		NumPoints = numPoints;
-		NumParts = numParts;
-		NumCurves = numCurves;
-
-		_xys.Clear();
-		_zs.Clear();
-		_ms.Clear();
-		_ids.Clear();
-
-		_parts.Clear();
-		_parts.Add(numPoints);
-
-		_xmin = _xmax = double.NaN;
-		_ymin = _ymax = double.NaN;
-		_zmin = _zmax = double.NaN;
-		_mmin = _mmax = double.NaN;
-	}
-
-	public void AddPartCount(int count)
-	{
-		if (_parts.Count < 1)
-			throw new Exception("Bug: expect _parts.Count > 0");
-		// Invariant: last part count is always NumPoints - (sum of _parts except last)
-		int index = _parts.Count - 1;
-		_parts[index] -= count;
-		_parts.Insert(index, count);
-	}
-
-	public void AddXY(double x, double y)
-	{
-		_xys.Add(new XY(x, y));
-	}
-
-	public void AddZ(double z)
-	{
-		_zs.Add(z);
-	}
-
-	public void AddM(double m)
-	{
-		_ms.Add(m);
-	}
-
-	public void AddID(int id)
-	{
-		_ids.Add(id);
-	}
-
-	public void AddCurve(object curve)
-	{
-		throw new NotImplementedException();
-	}
-
-	public void SetMinMaxXY(double xmin, double ymin, double xmax, double ymax)
-	{
-		_xmin = xmin;
-		_ymin = ymin;
-		_xmax = xmax;
-		_ymax = ymax;
-	}
-
-	public void SetMinMaxZ(double zmin, double zmax)
-	{
-		_zmin = zmin;
-		_zmax = zmax;
-	}
-
-	public void SetMinMaxM(double mmin, double mmax)
-	{
-		_mmin = mmin;
-		_mmax = mmax;
-	}
-
-	public Shape ToShape()
-	{
-		if (Type is GeometryType.Point)
-		{
-			var flags = GetFlags(HasZ, HasM, HasID);
-			double x = _xys.Count > 0 ? _xys[0].X : double.NaN;
-			double y = _xys.Count > 0 ? _xys[0].Y : double.NaN;
-			double z = HasZ && _zs.Count > 0 ? _zs[0] : double.NaN;
-			double m = HasM && _ms.Count > 0 ? _ms[0] : double.NaN;
-			int id = HasID && _ids.Count > 0 ? _ids[0] : -1;
-			return new PointShape(flags, x, y, z, m, id);
-		}
-
-		if (Type is GeometryType.Multipoint)
-		{
-			var flags = GetFlags(HasZ, HasM, HasID);
-
-			var count = _xys.Count;
-			var xys = _xys.ToArray();
-			var zs = HasZ ? TrimOrExtendWith(_zs, count, double.NaN).ToArray() : null;
-			var ms = HasM ? TrimOrExtendWith(_ms, count, double.NaN).ToArray() : null;
-			var ids = HasID ? TrimOrExtendWith(_ids, count, 0).ToArray() : null;
-
-			var box = new BoxShape(flags, _xmin, _ymin, _xmax, _ymax, _zmin, _zmax, _mmin, _mmax);
-			return new MultipointShape(flags, xys, zs, ms, ids).SetBox(box);
-		}
-
-		if (Type is GeometryType.Polyline or GeometryType.Polygon)
-		{
-			var flags = GetFlags(HasZ, HasM, HasID);
-
-			// NB. ToArray() so the shape gets its own coordinate collections (shape ctor does NOT copy lists)
-			var count = _xys.Count;
-			var xys = _xys.ToArray();
-			var zs = HasZ ? TrimOrExtendWith(_zs, count, double.NaN).ToArray() : null;
-			var ms = HasM ? TrimOrExtendWith(_ms, count, double.NaN).ToArray() : null;
-			var ids = HasID ? TrimOrExtendWith(_ids, count, 0).ToArray() : null;
-			var parts = _parts.Count < 2 ? null : _parts.ToArray();
-
-			var box = new BoxShape(flags, _xmin, _ymin, _xmax, _ymax, _zmin, _zmax, _mmin, _mmax);
-			var shape = Type is GeometryType.Polyline
-				? new PolylineShape(flags, xys, zs, ms, ids, parts).SetBox(box)
-				: new PolygonShape(flags, xys, zs, ms, ids, parts).SetBox(box);
-			return shape;
-		}
-
-		throw new NotSupportedException($"Shape of type {Type} is not supported");
-	}
-
-	public bool Validate(out string message)
-	{
-		bool valid = true;
-		message = string.Empty;
-
-		var numZs = _zs.Count;
-		if (HasZ && numZs != NumPoints)
-		{
-			AddMessage(ref message, $"expect {NumPoints} Z coords but there are {numZs}");
-			valid = false;
-		}
-
-		var numMs = _ms.Count;
-		if (HasM && numMs != NumPoints)
-		{
-			AddMessage(ref message, $"expect {NumPoints} M coords but there are {numMs}");
-			valid = false;
-		}
-
-		var numIDs = _ids.Count;
-		if (HasID && numIDs != NumPoints)
-		{
-			AddMessage(ref message, $"expect {NumPoints} vertex IDs but there are {numIDs}");
-			valid = false;
-		}
-
-		var numParts = _parts.Count;
-		if (numParts != NumParts)
-		{
-			AddMessage(ref message, $"expect {NumParts} parts but there are {numParts}");
-			valid = false;
-		}
-
-		var partSum = _parts.Sum();
-		if (partSum != NumPoints)
-		{
-			AddMessage(ref message, $"sum over part counts ({partSum}) does not match actual point count ({NumPoints})");
-			valid = false;
-		}
-
-		message = string.Empty;
-		return valid;
-	}
-
-	public void Validate()
-	{
-		if (!Validate(out var message))
-		{
-			throw new Exception(message);
-		}
-	}
-
-	private static void AddMessage(ref string accumulator, string message)
-	{
-		if (string.IsNullOrEmpty(message)) return;
-		if (string.IsNullOrEmpty(accumulator))
-		{
-			accumulator = message;
-		}
-		else
-		{
-			accumulator = string.Concat(accumulator, Environment.NewLine, message);
-		}
-	}
-
-	private static ShapeFlags GetFlags(bool hasZ, bool hasM, bool hasID)
-	{
-		var flags = ShapeFlags.None;
-		if (hasZ) flags |= ShapeFlags.HasZ;
-		if (hasM) flags |= ShapeFlags.HasM;
-		if (hasID) flags |= ShapeFlags.HasID;
-		return flags;
-	}
-
-	private static IEnumerable<T> TrimOrExtendWith<T>(IList<T> list, int count, T value)
-	{
-		if (list is null)
-			throw new ArgumentNullException(nameof(list));
-		if (list.Count < count)
-		{
-			return list.Concat(Enumerable.Repeat(value, count - list.Count));
-		}
-		if (list.Count > count)
-		{
-			return list.Take(count);
-		}
-		return list;
-	}
 }

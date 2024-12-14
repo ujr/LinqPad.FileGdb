@@ -716,6 +716,35 @@ public class ShapeBuffer
 		return false;
 	}
 
+	public static ShapeType GetShapeType(GeometryType geometryType)
+	{
+		switch (geometryType)
+		{
+			case GeometryType.Null:
+				return ShapeType.Null;
+			case GeometryType.Point:
+				return ShapeType.GeneralPoint;
+			case GeometryType.Multipoint:
+				return ShapeType.GeneralMultipoint;
+			case GeometryType.Polyline:
+				return ShapeType.GeneralPolyline;
+			case GeometryType.Polygon:
+				return ShapeType.GeneralPolygon;
+			case GeometryType.MultiPatch:
+				return ShapeType.GeneralMultiPatch;
+			case GeometryType.Bag:
+				return ShapeType.GeometryBag;
+			case GeometryType.Envelope:
+				throw new NotSupportedException("No ShapeType corresponds to GeometryType Envelope");
+			case GeometryType.Any:
+				throw new ArgumentOutOfRangeException(nameof(geometryType),
+					"No ShapeType corresponds to GeometryType Any");
+			default:
+				throw new ArgumentOutOfRangeException(nameof(geometryType),
+					geometryType, $"Unknown geometry type: {geometryType}");
+		}
+	}
+
 	public static int GetShapeType(uint shapeType, bool hasZ, bool hasM, bool hasID, bool hasCurves = false)
 	{
 		var generalType = GetGeneralType(shapeType);
@@ -725,6 +754,16 @@ public class ShapeBuffer
 		if (hasID) type |= (uint)Flags.HasID;
 		if (hasCurves) type |= (uint)Flags.HasCurves;
 		return unchecked((int)type);
+	}
+
+	public static uint GetShapeType(GeometryType geometryType, bool hasZ, bool hasM, bool hasID, bool hasCurves = false)
+	{
+		var shapeType = (uint) GetShapeType(geometryType);
+		if (hasZ) shapeType |= (uint)Flags.HasZ;
+		if (hasM) shapeType |= (uint)Flags.HasM;
+		if (hasID) shapeType |= (uint)Flags.HasID;
+		if (hasCurves) shapeType |= (uint)Flags.HasCurves;
+		return shapeType;
 	}
 
 	private static ShapeType GetGeneralType(uint shapeType)
@@ -768,5 +807,101 @@ public class ShapeBuffer
 			default:
 				throw new InvalidOperationException($"No general type for shape type {basicType}");
 		}
+	}
+
+	public static int GetPointBufferSize(bool hasZ, bool hasM, bool hasID)
+	{
+		int length = 4 + 8 + 8;
+		if (hasZ) length += 8;
+		if (hasM) length += 8;
+		if (hasID) length += 4;
+		return length;
+	}
+
+	public static int GetMultipointBufferSize(bool hasZ, bool hasM, bool hasID, int numPoints)
+	{
+		int length = 4 + 4 * 8 + 4;
+		length += numPoints * (8 + 8);
+		if (hasZ) length += 8 + 8 + numPoints * 8;
+		if (hasM) length += 8 + 8 + numPoints * 8;
+		if (hasID) length += numPoints * 4;
+		return length;
+	}
+
+	/// <remarks>Assumes the shape does not and cannot have curves.
+	/// If the shape does or may have curves, the buffer size must
+	/// be enlarged accordingly</remarks>
+	public static int GetMultipartBufferSize(bool hasZ, bool hasM, bool hasID, int numParts, int numPoints)
+	{
+		int length = 4 + 4 * 8 + 4 + 4; // type, box, numParts, numPoints
+		length += numParts * 4; // part index array
+		length += numPoints * 16; // xy coords
+		if (hasZ) length += 8 + 8 + numPoints * 8; // zmin, zmax, z coords
+		if (hasM) length += 8 + 8 + numPoints * 8; // mmin, mmax, m coords
+		if (hasID) length += numPoints * 4; // id values (integers)
+		return length;
+	}
+
+	public static int WriteShapeType(uint shapeType, byte[] bytes, int offset)
+	{
+		if (bytes is null)
+			throw new ArgumentNullException(nameof(bytes));
+		if (offset < 0)
+			throw new ArgumentOutOfRangeException(nameof(offset));
+		if (offset + 4 > bytes.Length)
+			throw new ArgumentException("overflow", nameof(bytes));
+
+		// little endian
+		bytes[offset + 0] = (byte)(shapeType & 255);
+		bytes[offset + 1] = (byte)((shapeType >> 8) & 255);
+		bytes[offset + 2] = (byte)((shapeType >> 16) & 255);
+		bytes[offset + 3] = (byte)((shapeType >> 24) & 255);
+
+		return 4; // bytes written
+	}
+
+	public static int WriteInt32(int value, byte[] bytes, int offset)
+	{
+		if (bytes is null)
+			throw new ArgumentNullException(nameof(bytes));
+		if (offset < 0)
+			throw new ArgumentOutOfRangeException(nameof(offset));
+		if (offset + 4 > bytes.Length)
+			throw new ArgumentException("overflow", nameof(bytes));
+
+		// little endian
+		bytes[offset + 0] = (byte)(value & 255);
+		bytes[offset + 1] = (byte)((value >> 8) & 255);
+		bytes[offset + 2] = (byte)((value >> 16) & 255);
+		bytes[offset + 3] = (byte)((value >> 24) & 255);
+
+		return 4; // bytes written
+	}
+
+	public static int WriteDouble(double value, byte[] bytes, int offset = 0)
+	{
+		if (bytes is null)
+			throw new ArgumentNullException(nameof(bytes));
+		if (offset < 0)
+			throw new ArgumentOutOfRangeException(nameof(offset));
+		if (offset + 8 > bytes.Length)
+			throw new ArgumentException("overflow", nameof(bytes));
+
+		// Empirical: Pro SDK Geometry.ToEsriShape() writes NaN as double.MinValue (FF:FF:FF:FF:FF:FF:EF:FF)
+		// ShapeBufferHelper methods have a flag "writeTrueNaNs" (controls NaN vs MinValue), but don't know how this flag is used
+
+		var bits = BitConverter.DoubleToUInt64Bits(value);
+
+		// little endian
+		bytes[offset + 0] = (byte)(bits & 255);
+		bytes[offset + 1] = (byte)((bits >> 8) & 255);
+		bytes[offset + 2] = (byte)((bits >> 16) & 255);
+		bytes[offset + 3] = (byte)((bits >> 24) & 255);
+		bytes[offset + 4] = (byte)((bits >> 32) & 255);
+		bytes[offset + 5] = (byte)((bits >> 40) & 255);
+		bytes[offset + 6] = (byte)((bits >> 48) & 255);
+		bytes[offset + 7] = (byte)((bits >> 56) & 255);
+
+		return 8; // bytes written
 	}
 }

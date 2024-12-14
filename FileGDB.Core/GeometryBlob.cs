@@ -15,6 +15,7 @@ public class GeometryBlob
 	private readonly byte[] _blob;
 	private IReadOnlyList<byte>? _wrapper; // cache
 	private ShapeBuffer? _buffer; // cache
+	private Shape? _shape; // cache
 
 	public GeometryBlob(GeometryDef geomDef, byte[] blob)
 	{
@@ -33,29 +34,57 @@ public class GeometryBlob
 	public IReadOnlyList<byte> Bytes => _wrapper ??= new ReadOnlyCollection<byte>(_blob);
 
 	/// <summary>
-	/// The geometry translated to Esri Shape Buffer format.
-	/// Throws a <see cref="FileGDBException"/> if we cannot
+	/// This File Geodatabase geometry blob decoded into an Esri Shape
+	/// buffer. Throws a <see cref="FileGDBException"/> if we cannot
 	/// parse the geometry blob.
 	/// </summary>
-	public ShapeBuffer ShapeBuffer
-	{
-		get
-		{
-			if (_buffer is null)
-			{
-				var reader = new GeometryBlobReader(_geomDef, _blob);
-				_buffer = reader.ReadAsShapeBuffer();
-				if (!reader.EntireBlobConsumed(out var bytesConsumed))
-					throw new FileGDBException(
-						$"Geometry BLOB reader consumed only {bytesConsumed} bytes " +
-						$"of a total of {_blob.Length} bytes in the BLOB");
-			}
+	public ShapeBuffer ShapeBuffer => _buffer ??= GetShapeBuffer(null);
 
-			return _buffer;
-		}
+	/// <summary>
+	/// This File Geodatabase geometry blob decoded into a Shape object.
+	/// Throws a <see cref="FileGDBException"/> if we cannot parse the
+	/// geometry blob.
+	/// </summary>
+	public Shape Shape => _shape ??= GetShape(null);
+
+	public ShapeBuffer GetShapeBuffer(ShapeFactory? factory, bool validate = true)
+	{
+		factory ??= new ShapeFactory();
+		Read(factory, validate);
+		return factory.ToShapeBuffer();
 	}
 
-	public Shape Shape => throw new NotImplementedException();
+	public Shape GetShape(ShapeFactory? factory, bool validate = true)
+	{
+		factory ??= new ShapeFactory();
+		Read(factory, validate);
+		return factory.ToShape();
+	}
+
+	private void Read(ShapeFactory factory, bool validate = true)
+	{
+		if (factory is null)
+			throw new ArgumentNullException(nameof(factory));
+
+		var reader = new GeometryBlobReader(_geomDef, _blob);
+
+		reader.Read(factory);
+
+		if (validate)
+		{
+			if (!factory.Validate(out string message))
+			{
+				throw new FileGDBException(message);
+			}
+
+			if (!reader.EntireBlobConsumed(out int bytesConsumed))
+			{
+				throw new FileGDBException(
+					$"Geometry BLOB reader consumed only {bytesConsumed} bytes " +
+					$"of a total of {_blob.Length} bytes in the BLOB");
+			}
+		}
+	}
 
 	public override string ToString()
 	{

@@ -43,7 +43,11 @@ to the geometry as stored in the File GDB.
 as an Esri Shape Buffer byte array and information about
 the geometry (type, attributes, number of points, access
 coordinates, etc). Note that these two byte arrays are
-different encodings of the geometry.
+different encodings of the geometry: the former is part
+of the File Geodatabase and stores coordinates as variable
+length integers, the latter is documented in an Esri white
+paper that comes with the File Geodatabase API and stores
+coordinates as `double` (IEEE 754) values.
 
 ## Limitations
 
