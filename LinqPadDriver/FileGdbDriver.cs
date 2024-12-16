@@ -125,41 +125,78 @@ public class FileGdbDriver : DynamicDataContextDriver
 	{
 		if (objectToWrite is GeometryBlob blob)
 		{
-			objectToWrite = FormatGeometryBlob(blob);
-		}
-		//else if (objectToWrite is Shape shape)
-		//{
-		//	objectToWrite = ShapeProxy.Get(shape);
-		//}
-		else if (objectToWrite is IEnumerable<byte> bytes)
-		{
 			var parent = info.ParentHierarchy.FirstOrDefault();
-			// Show first few bytes (fewer if on ShapeBuffer, because there are many more properties)
-			int maxBytes = parent is ShapeBuffer ? 12 : 24;
-			var text = FormatBytes(bytes, maxBytes);
-			objectToWrite = Util.WithStyle(text, "color:green");
+			objectToWrite = parent is RowBase
+				? Util.OnDemand(blob.ShapeType.ToString(), () => blob)
+				: blob;
+			//objectToWrite = FormatGeometryBlob(blob);
+		}
+		else if (info.ParentHierarchy.FirstOrDefault() is GeometryBlob)
+		{
+			if (objectToWrite is IReadOnlyList<byte> blobBytes)
+			{
+				var description = FormatBytes(blobBytes, 8, true);
+				objectToWrite = Util.OnDemand(description, () => blobBytes);
+			}
+			else if (objectToWrite is ShapeBuffer shapeBuffer)
+			{
+				objectToWrite = Util.OnDemand(shapeBuffer.GeometryType.ToString(), () => shapeBuffer);
+			}
+			else if (objectToWrite is Shape shape)
+			{
+				objectToWrite = Util.OnDemand(shape.Type.ToString(), () => shape);
+			}
+		}
+		else if (info.ParentHierarchy.FirstOrDefault() is ShapeBuffer)
+		{
+			if (objectToWrite is IReadOnlyList<byte> bytes)
+			{
+				var text = FormatBytes(bytes, 12);
+				objectToWrite = Util.OnDemand(text, () => bytes);
+			}
+		}
+		else if (info.ParentHierarchy.FirstOrDefault() is Shape)
+		{
+			if (objectToWrite is BoxShape box)
+			{
+				objectToWrite = Util.OnDemand("Box", () => box);
+			}
+			else if (objectToWrite is IReadOnlyList<XY> coordsXY)
+			{
+				var description = coordsXY.Count == 1 ? "1 pair" : $"{coordsXY.Count} pairs";
+				objectToWrite = Util.OnDemand(description, () => coordsXY);
+			}
+			else if (objectToWrite is IReadOnlyList<double> ords)
+			{
+				var description = ords.Count == 1 ? "1 double" : $"{ords.Count} doubles";
+				objectToWrite = Util.OnDemand(description, () => ords);
+			}
+			else if (objectToWrite is IReadOnlyList<int> ids)
+			{
+				var description = ids.Count == 1 ? "1 ID" : $"{ids.Count} IDs";
+				objectToWrite = Util.OnDemand(description, () => ids);
+			}
+			else if (objectToWrite is IReadOnlyList<PointShape> points)
+			{
+				var description = points.Count == 1 ? "1 point" : $"{points.Count} points";
+				objectToWrite = Util.OnDemand(description, () => points);
+			}
+			else if (objectToWrite is IReadOnlyList<Shape> parts)
+			{
+				var description = parts.Count == 1 ? "1 part" : $"{parts.Count} parts";
+				objectToWrite = Util.OnDemand(description, () => parts);
+			}
+			else if (objectToWrite is IReadOnlyList<SegmentModifier> curves)
+			{
+				var description = curves.Count == 1 ? "1 curve" : $"{curves.Count} curves";
+				objectToWrite = Util.OnDemand(description, () => curves);
+			}
 		}
 		base.PreprocessObjectToWrite(ref objectToWrite, info);
 	}
 
-	private static object FormatGeometryBlob(GeometryBlob? blob)
-	{
-		if (blob is null)
-			throw new ArgumentNullException(nameof(blob));
-
-		try
-		{
-			var head = Util.ToHtmlString(FormatBytes(blob.Bytes, 12));
-			var type = Util.ToHtmlString(blob.ShapeBuffer.GeometryType.ToString());
-			return Util.RawHtml($"<font color='green'>{head}</font> <b>{type}</b>");
-		}
-		catch (Exception ex)
-		{
-			return Util.WithStyle($"Error: {ex.Message}", "color:Crimson");
-		}
-	}
-
-	private static string FormatBytes(IEnumerable<byte> bytes, int maxBytes)
+	[PublicAPI]
+	public static string FormatBytes(IEnumerable<byte> bytes, int maxBytes, bool omitCount = false)
 	{
 		if (bytes is null)
 			throw new ArgumentNullException(nameof(bytes));
@@ -183,106 +220,13 @@ public class FileGdbDriver : DynamicDataContextDriver
 
 		sb.Append('>');
 
-		if (bytes is ICollection<byte> collection)
+		if (bytes is ICollection<byte> collection && !omitCount)
 		{
 			sb.AppendFormat(" ({0} bytes)", collection.Count);
 		}
 
 		return sb.ToString();
 	}
-
-	#region ShapeProxy for Dump() display
-
-	private class ShapeProxy
-	{
-		protected Shape Shape { get; }
-
-		protected ShapeProxy(Shape shape)
-		{
-			Shape = shape ?? throw new ArgumentNullException(nameof(shape));
-		}
-
-		public GeometryType Type => Shape.Type;
-		public ShapeFlags Flags => Shape.Flags;
-		public bool IsEmpty => Shape.IsEmpty;
-		public object Box => Util.OnDemand("Box", () => Shape.Box);
-
-		public static ShapeProxy Get(Shape shape)
-		{
-			if (shape is null)
-				throw new ArgumentNullException(nameof(shape));
-
-			if (shape is PointShape point) return new PointShapeProxy(point);
-			if (shape is BoxShape box) return new BoxShapeProxy(box);
-			if (shape is MultipointShape multipoint) return new MultipointShapeProxy(multipoint);
-			if (shape is PolylineShape polyline) return new PolylineShapeProxy(polyline);
-			if (shape is PolygonShape polygon) return new PolygonShapeProxy(polygon);
-
-			throw new NotSupportedException($"Unknown shape type {shape.GetType().Name}");
-		}
-	}
-
-	private class PointShapeProxy : ShapeProxy
-	{
-		public PointShapeProxy(PointShape shape) : base(shape) { }
-
-		public double X => ((PointShape)Shape).X;
-		public double Y => ((PointShape)Shape).Y;
-		public double Z => ((PointShape)Shape).Z;
-		public double M => ((PointShape)Shape).M;
-		public int ID => ((PointShape)Shape).ID;
-	}
-
-	private class BoxShapeProxy : ShapeProxy
-	{
-		public BoxShapeProxy(BoxShape shape) : base(shape) { }
-
-		public double XMin => ((BoxShape)Shape).XMin;
-		public double YMin => ((BoxShape)Shape).YMin;
-		public double XMax => ((BoxShape)Shape).XMax;
-		public double YMax => ((BoxShape)Shape).YMax;
-		public double ZMin => ((BoxShape)Shape).ZMin;
-		public double ZMax => ((BoxShape)Shape).ZMax;
-		public double MMin => ((BoxShape)Shape).MMin;
-		public double MMax => ((BoxShape)Shape).MMax;
-	}
-
-	private class PointListShapeProxy : ShapeProxy
-	{
-		protected PointListShapeProxy(PointListShape shape) : base(shape) { }
-
-		public object Points => Util.OnDemand(PointsLabel, () => ((PointListShape)Shape).Points);
-
-		private string PointsLabel => $"Points ({((PointListShape)Shape).NumPoints})";
-	}
-
-	private class MultipointShapeProxy : PointListShapeProxy
-	{
-		public MultipointShapeProxy(MultipointShape shape) : base(shape) { }
-	}
-
-	private class MultipartShapeProxy : PointListShapeProxy
-	{
-		protected MultipartShapeProxy(MultipartShape shape) : base(shape) { }
-
-		protected string PartsLabel => $"Parts ({((MultipartShape)Shape).NumParts})";
-	}
-
-	private class PolylineShapeProxy : MultipartShapeProxy
-	{
-		public PolylineShapeProxy(PolylineShape shape) : base(shape) { }
-
-		public object Parts => Util.OnDemand(PartsLabel, () => ((PolylineShape)Shape).Parts);
-	}
-
-	private class PolygonShapeProxy : MultipartShapeProxy
-	{
-		public PolygonShapeProxy(PolygonShape shape) : base(shape) { }
-
-		public object Parts => Util.OnDemand(PartsLabel, () => ((PolygonShape)Shape).Parts);
-	}
-
-	#endregion
 
 	public override List<ExplorerItem> GetSchemaAndBuildAssembly(
 		IConnectionInfo cxInfo, AssemblyName assemblyToBuild,
@@ -479,7 +423,7 @@ public class $$TABLENAME$$Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<$
     return row;
   }
 
-  public class Row
+  public class Row : FileGDB.LinqPadDriver.RowBase
   {
     //public BarType Bar { get; set; }
     $$PERFIELDPROPERTIES$$
@@ -789,6 +733,12 @@ public class $$TABLENAME$$Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<$
 }
 
 [UsedImplicitly]
+public abstract class RowBase
+{
+	// just tagging
+}
+
+[UsedImplicitly]
 public abstract class TableBase
 {
 	private Table? _table;
@@ -802,21 +752,21 @@ public abstract class TableBase
 		return this;
 	}
 
-	public int FieldCount => Table.FieldCount;
-	public long RowCount => Table.RowCount;
-	public GeometryType GeometryType => Table.GeometryType;
-	public bool HasZ => Table.HasZ;
-	public bool HasM => Table.HasM;
-	public int Version => Table.Version;
-	public bool UseUtf8 => Table.UseUtf8;
-	public long MaxOID => Table.MaxObjectID;
-	public int MaxEntrySize => Table.MaxEntrySize;
-	public int OffsetSize => Table.OffsetSize;
-	public long DataFileSize => Table.FileSizeBytes;
-	public string DataFilePath => Table.GetDataFilePath();
-	public string IndexFilePath => Table.GetIndexFilePath();
-	public IReadOnlyList<FieldInfo> Fields => Table.Fields;
-	public IReadOnlyList<IndexInfo> Indexes => Table.Indexes;
+	[PublicAPI] public int FieldCount => Table.FieldCount;
+	[PublicAPI] public long RowCount => Table.RowCount;
+	[PublicAPI] public GeometryType GeometryType => Table.GeometryType;
+	[PublicAPI] public bool HasZ => Table.HasZ;
+	[PublicAPI] public bool HasM => Table.HasM;
+	[PublicAPI] public int Version => Table.Version;
+	[PublicAPI] public bool UseUtf8 => Table.UseUtf8;
+	[PublicAPI] public long MaxOID => Table.MaxObjectID;
+	[PublicAPI] public int MaxEntrySize => Table.MaxEntrySize;
+	[PublicAPI] public int OffsetSize => Table.OffsetSize;
+	[PublicAPI] public long DataFileSize => Table.FileSizeBytes;
+	[PublicAPI] public string DataFilePath => Table.GetDataFilePath();
+	[PublicAPI] public string IndexFilePath => Table.GetIndexFilePath();
+	[PublicAPI] public IReadOnlyList<FieldInfo> Fields => Table.Fields;
+	[PublicAPI] public IReadOnlyList<IndexInfo> Indexes => Table.Indexes;
 
 	[PublicAPI]
 	protected RowsResult SearchRows()

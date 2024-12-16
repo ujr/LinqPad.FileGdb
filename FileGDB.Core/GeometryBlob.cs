@@ -23,6 +23,8 @@ public class GeometryBlob
 		_blob = blob ?? throw new ArgumentNullException(nameof(blob));
 	}
 
+	public ShapeType ShapeType => GetShapeType();
+
 	/// <summary>
 	/// The number of bytes in this geometry blob.
 	/// </summary>
@@ -84,6 +86,16 @@ public class GeometryBlob
 					$"of a total of {_blob.Length} bytes in the BLOB");
 			}
 		}
+	}
+
+	private ShapeType GetShapeType()
+	{
+		if (_blob.Length > 0)
+		{
+			return (ShapeType)(_blob[0] & 0x7F);
+		}
+
+		return ShapeType.Null;
 	}
 
 	public override string ToString()
