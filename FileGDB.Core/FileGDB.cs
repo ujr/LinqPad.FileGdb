@@ -313,6 +313,24 @@ public sealed class Table : IDisposable
 		}
 	}
 
+	/// <returns>Field index of shape field, or -1 if no shape field</returns>
+	/// <remarks>We define the shape field to be the first field of type Geometry</remarks>
+	public int GetShapeIndex()
+	{
+		var fields = Fields;
+		var fieldCount = fields.Count;
+
+		for (int i = 0; i < fieldCount; i++)
+		{
+			if (fields[i].Type == FieldType.Geometry)
+			{
+				return i;
+			}
+		}
+
+		return -1; // no shape field
+	}
+
 	public RowsResult Search(string? fields, string? whereClause, Envelope? extent)
 	{
 		fields = fields is null ? "*" : fields.Trim();
@@ -1264,7 +1282,7 @@ public class TableScanResult : RowsResult
 		_oid = 0;
 		_maxOid = table.MaxObjectID;
 		_values = new object[Fields.Count];
-		_shapeFieldIndex = FindShapeField(Fields);
+		_shapeFieldIndex = table.GetShapeIndex();
 	}
 
 	public override bool Step()
@@ -1288,22 +1306,6 @@ public class TableScanResult : RowsResult
 	public override object? GetValue(int fieldIndex)
 	{
 		return _values[fieldIndex];
-	}
-
-	/// <returns>index of first field of type Geometry, or -1 if no such field</returns>
-	private static int FindShapeField(IReadOnlyList<FieldInfo> fields)
-	{
-		int count = fields.Count;
-
-		for (int i = 0; i < count; i++)
-		{
-			if (fields[i].Type == FieldType.Geometry)
-			{
-				return i;
-			}
-		}
-
-		return -1; // no shape field
 	}
 
 	private GeometryBlob? GetShape()
