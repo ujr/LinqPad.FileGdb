@@ -209,6 +209,7 @@ public class ShapeBuffer
 			throw new ArgumentOutOfRangeException(nameof(index));
 
 		var numParts = GetPartCount();
+		var mayHaveCurves = GetMayHaveCurves(_shapeType);
 
 		int start = 44 + numParts * 4;
 
@@ -242,6 +243,13 @@ public class ShapeBuffer
 			m = DefaultM;
 		}
 
+		if (mayHaveCurves)
+		{
+			int numCurves = ReadInt32(start);
+			start += 4;
+			start += SkipCurves(start, numCurves);
+		}
+
 		if (HasID)
 		{
 			offset = start + index * 4;
@@ -251,6 +259,34 @@ public class ShapeBuffer
 		{
 			id = DefaultID;
 		}
+	}
+
+	private int SkipCurves(int offset, int numCurves)
+	{
+		int startOffset = offset;
+
+		for (int i = 0; i < numCurves; i++)
+		{
+			_ = ReadInt32(offset); // segment index
+			int curveType = ReadInt32(offset + 4);
+
+			switch (curveType)
+			{
+				case 1:
+					offset += 4 + 4 + 8 + 8 + 4;
+					break;
+				case 4:
+					offset += 4 + 4 + 4 * 8;
+					break;
+				case 5:
+					offset += 4 + 4 + 5 * 8 + 4;
+					break;
+				default:
+					throw InvalidShapeBuffer($"Unknown curve type: {curveType}");
+			}
+		}
+
+		return offset - startOffset;
 	}
 
 	public string ToWKT(int decimalDigits = -1)
