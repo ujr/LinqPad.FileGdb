@@ -144,7 +144,7 @@ public class FileGdbDriver : DynamicDataContextDriver
 			}
 			else if (objectToWrite is Shape shape)
 			{
-				objectToWrite = Util.OnDemand(shape.Type.ToString(), () => shape);
+				objectToWrite = Util.OnDemand(shape.GeometryType.ToString(), () => shape);
 			}
 		}
 		else if (info.ParentHierarchy.FirstOrDefault() is ShapeBuffer)

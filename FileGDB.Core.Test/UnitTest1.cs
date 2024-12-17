@@ -217,7 +217,7 @@ public class UnitTest1 : IDisposable
 
 		var shape = rows.Shape?.Shape ?? throw new Exception("Shape is null");
 		var point = Assert.IsAssignableFrom<PointShape>(shape);
-		Assert.Equal(GeometryType.Point, point.Type);
+		Assert.Equal(GeometryType.Point, point.GeometryType);
 		Assert.False(point.IsEmpty);
 		Assert.Equal(684219.55, point.X, 2);
 		Assert.Equal(244089.29, point.Y, 2);

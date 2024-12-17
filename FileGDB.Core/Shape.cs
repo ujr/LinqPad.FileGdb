@@ -34,7 +34,7 @@ public abstract class Shape
 	private readonly uint _shapeType;
 	private BoxShape? _box;
 
-	public GeometryType Type => ShapeBuffer.GetGeometryType(_shapeType);
+	public GeometryType GeometryType => ShapeBuffer.GetGeometryType(_shapeType);
 	public ShapeFlags Flags => GetShapeFlags(_shapeType);
 	public bool HasZ => ShapeBuffer.GetHasZ(_shapeType);
 	public bool HasM => ShapeBuffer.GetHasM(_shapeType);
