@@ -993,7 +993,7 @@ public class CircularArcModifier : SegmentModifier
 	{
 		ShapeBuffer.WriteDouble(D1, bytes, offset + 0);
 		ShapeBuffer.WriteDouble(D2, bytes, offset + 8);
-		ShapeBuffer.WriteDouble(Flags, bytes, offset + 16);
+		ShapeBuffer.WriteInt32(Flags, bytes, offset + 16);
 		return 8 + 8 + 4;
 	}
 }
@@ -1011,8 +1011,8 @@ public class CubicBezierModifier : SegmentModifier
 	{
 		ControlPoint1X = cp1X;
 		ControlPoint1Y = cp1Y;
-		ControlPoint2X = cp1X;
-		ControlPoint2Y = cp1Y;
+		ControlPoint2X = cp2X;
+		ControlPoint2Y = cp2Y;
 	}
 
 	public override int GetShapeBufferSize()
@@ -1063,7 +1063,7 @@ public class EllipticArcModifier : SegmentModifier
 		ShapeBuffer.WriteDouble(D3, bytes, offset + 16);
 		ShapeBuffer.WriteDouble(D4, bytes, offset + 24);
 		ShapeBuffer.WriteDouble(D5, bytes, offset + 32);
-		ShapeBuffer.WriteDouble(Flags, bytes, offset + 40);
+		ShapeBuffer.WriteInt32(Flags, bytes, offset + 40);
 		return 5 * 8 + 4;
 	}
 }
