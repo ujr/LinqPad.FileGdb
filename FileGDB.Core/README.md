@@ -49,12 +49,34 @@ length integers, the latter is documented in an Esri white
 paper that comes with the File Geodatabase API and stores
 coordinates as `double` (IEEE 754) values.
 
+The library includes a simple WKT (well-known text) writer
+for geometries. Usage (refer to embedded XML documentation
+comments for details):
+
+```cs
+var buffer = new StringBuilder();
+var wkt = new WKTWriter(buffer);
+// or:
+TextWriter writer = ...;
+var wkt = new WKTWriter(writer);
+// then:
+wkt.BeginFoo(); // start a new shape: Point, Polygon, etc.
+wkt.AddVertex(x, y[, z][, m][, id]); // repeatedly
+wkt.NewPart(); // begin a new part (for multi-part shapes)
+wkt.NewPolygon(); // begin a new outer ring (for MultiPolygon)
+wkt.EndShape(); // end current shape
+// any number of shapes can be written
+wkt.Flush(); // optional (flush the underlying writer)
+wkt.Dispose(); // flush and dispose the underlying writer
+```
+
 ## Limitations
 
 - this is **experimental** code and comes with **no warranty**
 - only a small subset of the File Geodatabase is supported
-- only full table scans are supported
+- field types DateOnly, TimeOnly, DateTimeOffset are not implemented
 - MultiPatch geometries are not supported
+- only full table scans are supported
 - indices are not used and not accessible
 - no concurrency control (no locking)
 - strictly read-only (no updates)

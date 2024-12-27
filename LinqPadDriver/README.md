@@ -49,8 +49,9 @@ Tables.MyPointTable.GetRow(5).Dump(); // get row by Object ID
 
 - this is **experimental** code and comes with **no warranty**
 - only a small subset of the File Geodatabase is supported
-- only full table scans are supported
+- field types DateOnly, TimeOnly, DateTimeOffset are not implemented
 - MultiPatch geometries are not supported
+- only full table scans are supported
 - indices are not used and not accessible
 - no concurrency control (no locking)
 - strictly read-only (no updates)

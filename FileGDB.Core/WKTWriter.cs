@@ -328,6 +328,9 @@ public class WKTWriter : IDisposable
 		EndShape();
 	}
 
+	/// <summary>
+	/// Flush the underlying TextWriter to write buffered data
+	/// </summary>
 	public void Flush()
 	{
 		_writer.Flush();
