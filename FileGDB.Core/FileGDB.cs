@@ -331,21 +331,6 @@ public sealed class Table : IDisposable
 		return -1; // no shape field
 	}
 
-	public RowsResult Search(string? fields, string? whereClause, Envelope? extent)
-	{
-		fields = fields is null ? "*" : fields.Trim();
-		whereClause = Canonical(whereClause);
-
-		if (fields != "*")
-			throw new NotImplementedException("Sub fields not yet implemented");
-		if (whereClause != null)
-			throw new NotImplementedException("Where Clause filtering not yet implemented");
-		if (extent != null)
-			throw new NotImplementedException("Spatial extent restriction not yet implemented");
-
-		return new TableScanResult(this);
-	}
-
 	/// <summary>
 	/// Read raw bytes for the row with the given <paramref name="oid"/>.
 	/// Never overflows the given <paramref name="bytes"/> array, but
@@ -476,11 +461,24 @@ public sealed class Table : IDisposable
 		{
 			var excess = _dataReader.ReadBytes((int)delta);
 			// Some test data gets me here with 4 bytes excess:
-			// LINESZM and MULTIPOINTSZM in TestSLDLM.gdb
+			// - LINESZM and MULTIPOINTSZM in TestSLDLM.gdb
+			// but not if I copied these tables to a new file gdb
 			//Debug.Assert(false, $"Unread data in row blob: {delta} byte(s)");
 		}
 
 		return values;
+	}
+
+	public RowsResult ReadRows(string? whereClause, Envelope? extent)
+	{
+		whereClause = Canonical(whereClause);
+
+		if (whereClause != null)
+			throw new NotImplementedException("Where clause filtering not yet implemented");
+		if (extent != null)
+			throw new NotImplementedException("Spatial extent filtering not yet implemented");
+
+		return new TableScanResult(this);
 	}
 
 	/// <summary>

@@ -192,7 +192,7 @@ public class FileGdbContext : IDisposable
 		{
 			//System.Diagnostics.Debugger.Launch();
 
-			var result = _table.Search(null, null, null);
+			var result = _table.ReadRows(null, null);
 
 			var fields = result.Fields;
 			var values = new object?[fields.Count];

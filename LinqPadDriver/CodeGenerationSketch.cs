@@ -143,7 +143,7 @@ public class TYPENAME
 			if (_debugMode)
 				Debugger.Launch();
 
-			return Table.Search(null, null, null);
+			return Table.ReadRows(null, null);
 		}
 
 		protected FileGDB.Core.Table Table =>

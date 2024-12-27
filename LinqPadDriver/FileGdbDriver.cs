@@ -776,7 +776,7 @@ public abstract class TableBase
 			Debugger.Launch();
 		}
 
-		return Table.Search(null, null, null);
+		return Table.ReadRows(null, null);
 	}
 
 	[PublicAPI]

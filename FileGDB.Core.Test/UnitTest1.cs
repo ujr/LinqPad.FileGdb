@@ -201,7 +201,7 @@ public class UnitTest1 : IDisposable
 
 		// This table has one row: Shape=Point, Code=1, Text="One", Size=12.3
 
-		var rows = table.Search(null, null, null);
+		var rows = table.ReadRows(null, null);
 
 		Assert.True(rows.Step());
 
@@ -254,7 +254,7 @@ public class UnitTest1 : IDisposable
 
 		// This table has one row: Code=1, Text="One", Size=12.3
 
-		var rows = table.Search(null, null, null);
+		var rows = table.ReadRows(null, null);
 
 		Assert.True(rows.Step());
 
