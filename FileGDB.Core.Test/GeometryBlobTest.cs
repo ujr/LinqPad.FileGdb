@@ -4,19 +4,23 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using Xunit;
+using Xunit.Abstractions;
 
 namespace FileGDB.Core.Test;
 
 public class GeometryBlobTest : IDisposable
 {
+	private readonly ITestOutputHelper _output;
 	//private readonly string _myTempPath;
 
 	private const double NoZ = ShapeBuffer.DefaultZ;
 	private const double NoM = ShapeBuffer.DefaultM;
 	private const int NoID = ShapeBuffer.DefaultID;
 
-	public GeometryBlobTest()
+	public GeometryBlobTest(ITestOutputHelper output)
 	{
+		_output = output ?? throw new ArgumentNullException(nameof(output));
+
 		// TODO Once tests and data are assembled, zip the FGDB to data/GeomTest.gdb.zip and unzip on-the-fly
 		//var zipArchivePath = TestUtils.GetTestDataPath("GeomTest.gdb.zip");
 		//Assert.True(File.Exists(zipArchivePath));
@@ -334,12 +338,47 @@ public class GeometryBlobTest : IDisposable
 		TestPointIDs(polygon.Points, 0, 0, 0, 0, 0, 0, 0, 0);
 	}
 
+	[Theory]
+	[InlineData("TestGeom.gdb", "POINTS", 1, "Point.bin")]
+	[InlineData("TestGeom.gdb", "POINTS", 2, "PointID.bin")]
+	[InlineData("TestGeom.gdb", "POINTSZM", 1, "PointZM.bin")]
+	[InlineData("TestGeom.gdb", "POINTSZM", 2, "PointZMID.bin")]
+	[InlineData("TestGeom.gdb", "MULTIPOINTS", 1, "Multipoint.bin")]
+	[InlineData("TestGeom.gdb", "MULTIPOINTSZM", 1, "MultipointZM.bin")]
+	[InlineData("TestGeom.gdb", "LINESZM", 1, "LineLinear.bin")]
+	[InlineData("TestGeom.gdb", "LINESZM", 2, "LineCurves.bin")]
+	[InlineData("TestGeom.gdb", "LINES", 4, "LineMultipart.bin")]
+	[InlineData("TestGeom.gdb", "POLYSZ", 6, "PolygonZ.bin")]
+	[InlineData("TestGeom.gdb", "POLYSZ", 11, "PolygonMultipartZ.bin")]
+	[InlineData("TestGeom.gdb", "POLYSZ", 9, "PolygonCircle.bin")]
+	[InlineData("TestGeom.gdb", "POLYSZ", 10, "PolygonEllipse.bin")]
+	public void TestShapeBufferByteByByte(string gdbName, string tableName, long oid, string expectedDataFile)
+	{
+		var actual = ReadGeometryBlob(gdbName, tableName, oid).ShapeBuffer;
+		var expected = ReadTestDataBytes(expectedDataFile, "shpbuf");
+		// It seems the ShapeBuffers exported from Pro use general types (e.g. GeneralPolygon)
+		// with shape flags, whereas the FGDB stores "classic" types (e.g. PolygonZ)
+		AssertEqualShapeBuffer(expected, actual, 0.0001);
+	}
+
 	#region Private test utils
 
 	private string GetTempDataPath(string fileName)
 	{
 		// TODO return Path.Combine(_myTempPath, fileName);
 		return Path.Combine("C:\\Temp", fileName);
+	}
+
+	private static byte[] ReadTestDataBytes(string fileName, string? folder = null)
+	{
+		if (!string.IsNullOrEmpty(folder))
+		{
+			fileName = Path.Combine(folder, fileName);
+		}
+
+		string filePath = TestUtils.GetTestDataPath(fileName);
+
+		return File.ReadAllBytes(filePath);
 	}
 
 	private static GeometryBlob ReadGeometryBlob(Table table, long oid)
@@ -481,6 +520,70 @@ public class GeometryBlobTest : IDisposable
 		{
 			Assert.Equal(ids[i], points[i].ID);
 		}
+	}
+
+	private void AssertEqualShapeBuffer(byte[] expected, ShapeBuffer actual, double boxTolerance)
+	{
+		if (expected is null)
+			throw new ArgumentNullException(nameof(expected));
+		if (actual is null)
+			throw new ArgumentNullException(nameof(actual));
+
+		Assert.Equal(expected.Length, actual.Length);
+
+		// It seems Pro's ToEsriShape() writes general types with flags,
+		// whereas the FGDB stores "classic" types (e.g. PolygonZ)
+
+		var expectedType = BitConverter.ToUInt32(expected, 0);
+		var actualType = BitConverter.ToUInt32(actual.Bytes.Take(4).ToArray());
+		Assert.True(ShapeBuffer.ShapeTypeEqual(expectedType, actualType));
+
+		if (actual.GeometryType == GeometryType.Point)
+		{
+			// skip 1st 4 bytes (shape type)
+			Assert.Equal(expected.Skip(4).ToArray(), actual.Bytes.Skip(4).ToArray());
+		}
+		else
+		{
+			// Bounding boxes seem to differ, but within GeometryDef.XYScale:
+
+			GetBox(expected, 4, out var x0e, out var y0e, out var x1e, out var y1e);
+			GetBox(actual.Bytes.ToArray(), 4, out var x0a, out var y0a, out var x1a, out var y1a);
+
+			double dx0 = x0e - x0a;
+			double dy0 = y0e - y0a;
+			double dx1 = x1e - x1a;
+			double dy1 = y1e - y1a;
+
+			if (dx0 > 0 || dy0 > 0 || dx1 > 0 || dy1 > 0)
+			{
+				_output.WriteLine($"Actual:   {x0a} {y0a} .. {x1a} {y1a}");
+				_output.WriteLine($"Expected: {x0e} {y0e} .. {x1e} {y1e}");
+				_output.WriteLine($"Exp-Act:  {dx0:F12} {dy0:F12} .. {dx1:F12} {dy1:F12}");
+
+				if (dx0 > boxTolerance || dy0 > boxTolerance ||
+				    dx1 > boxTolerance || dy1 > boxTolerance)
+				{
+					Assert.True(false, $"BBox differs beyond tolerance of {boxTolerance}");
+				}
+			}
+
+			// skip 1st 4+32 bytes (shape type and bbox)
+			int count = 4 + 4 * 8;
+			Assert.Equal(expected.Skip(count).ToArray(), actual.Bytes.Skip(count).ToArray());
+		}
+
+		// Compare all bytes:
+		//Assert.Equal(expected, actual);
+	}
+
+	private static void GetBox(byte[] bytes, int offset,
+		out double xmin, out double ymin, out double xmax, out double ymax)
+	{
+		xmin = BitConverter.ToDouble(bytes, offset + 0);
+		ymin = BitConverter.ToDouble(bytes, offset + 8);
+		xmax = BitConverter.ToDouble(bytes, offset + 16);
+		ymax = BitConverter.ToDouble(bytes, offset + 24);
 	}
 
 	#endregion

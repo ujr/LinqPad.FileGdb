@@ -878,6 +878,36 @@ public class ShapeBuffer
 		return length;
 	}
 
+	/// <summary>
+	/// Compare shape types for equality, equating modern "general types"
+	/// (e.g. <see cref="Core.ShapeType.GeneralPolygon"/> with HasZ flag)
+	/// with equivalent "classic" types (e.g. <see cref="Core.ShapeType.PolygonZ"/>).
+	/// </summary>
+	public static bool ShapeTypeEqual(uint shapeTypeA, uint shapeTypeB)
+	{
+		var aType = GetGeneralType(shapeTypeA);
+		var bType = GetGeneralType(shapeTypeB);
+		if (aType != bType) return false;
+
+		bool aZ = GetHasZ(shapeTypeA);
+		bool bZ = GetHasZ(shapeTypeB);
+		if (aZ != bZ) return false;
+
+		bool aM = GetHasM(shapeTypeA);
+		bool bM = GetHasM(shapeTypeB);
+		if (aM != bM) return false;
+
+		bool aID = GetHasID(shapeTypeA);
+		bool bID = GetHasID(shapeTypeB);
+		if (aID != bID) return false;
+
+		bool aCurves = GetMayHaveCurves(shapeTypeA);
+		bool bCurves = GetMayHaveCurves(shapeTypeB);
+		if (aCurves != bCurves) return false;
+
+		return true;
+	}
+
 	public static int WriteShapeType(uint shapeType, byte[] bytes, int offset)
 	{
 		if (bytes is null)
@@ -914,7 +944,7 @@ public class ShapeBuffer
 		return 4; // bytes written
 	}
 
-	public static int WriteDouble(double value, byte[] bytes, int offset = 0)
+	public static int WriteDouble(double value, byte[] bytes, int offset, bool writeRealNaN = false)
 	{
 		if (bytes is null)
 			throw new ArgumentNullException(nameof(bytes));
@@ -925,6 +955,16 @@ public class ShapeBuffer
 
 		// Empirical: Pro SDK Geometry.ToEsriShape() writes NaN as double.MinValue (FF:FF:FF:FF:FF:FF:EF:FF)
 		// ShapeBufferHelper methods have a flag "writeTrueNaNs" (controls NaN vs MinValue), but don't know how this flag is used
+
+		// Shapefile white paper says: Positive infinity, negative infinity,
+		// and NaN values are not allowed in shapefiles. [...] "no data" values
+		// [...] used only for measures. Any floating point number smaller than
+		// –10^38 is considered [...] to represent a "no data" value [page 2].
+
+		if (!writeRealNaN && double.IsNaN(value)) // 00 00 00 00 00 00 F8 FF
+		{
+			value = double.MinValue; // FF FF FF FF FF FF EF FF
+		}
 
 		var bits = BitConverter.DoubleToUInt64Bits(value);
 
