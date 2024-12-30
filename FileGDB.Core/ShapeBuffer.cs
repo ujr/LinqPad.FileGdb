@@ -54,7 +54,9 @@ public class ShapeBuffer
 	public bool HasZ => GetHasZ(_shapeType);
 	public bool HasM => GetHasM(_shapeType);
 	public bool HasID => GetHasID(_shapeType);
-	//public bool HasCurves => GetMayHaveCurves(_shapeType);
+
+	/// <summary>See <see cref="GetMayHaveCurves"/></summary>
+	public bool MayHaveCurves => GetMayHaveCurves(_shapeType);
 
 	public int NumPoints => GetPointCount();
 
@@ -344,7 +346,10 @@ public class ShapeBuffer
 				break;
 
 			case GeometryType.Envelope:
-				throw new NotImplementedException("Envelope to WKT is not implemented");
+				// WKT has no representation for Envelope
+				// PostGIS writes a 5 vertex POLYGON (or 2 vertex LINESTRING if no dx or dy)
+				// Pro's ToEsriShape() writes a 5 vertex Polygon if called on an Envelope
+				throw new InvalidOperationException("GeometryType Envelope is invalid for this operation");
 
 			case GeometryType.Any:
 				throw new InvalidOperationException("GeometryType Any is invalid for this operation");
@@ -479,7 +484,9 @@ public class ShapeBuffer
 			case GeometryType.Polygon:
 				return ReadInt32(40) == 0;
 			case GeometryType.Envelope:
-				throw new NotImplementedException(); // TODO find out how empty env is represented
+				// Envelope has no Shape Buffer representation
+				// (Pro's ToEsriShape() writes a 5 vertex Polygon if called on an Envelope)
+				throw new InvalidOperationException();
 			case GeometryType.Any:
 				throw new InvalidOperationException();
 			case GeometryType.MultiPatch:
@@ -593,6 +600,8 @@ public class ShapeBuffer
 			ulong lo = (b3 << 24) | (b2 << 16) | (b1 << 8) | b0;
 			ulong hi = (b7 << 24) | (b6 << 16) | (b5 << 8) | b4;
 			double value = BitConverter.UInt64BitsToDouble((hi << 32) | lo);
+			// Shapefile white paper, page 2: values less than -1E38 are
+			// to be considered a "no data" value, which for us means NaN:
 			return value < -1E+38 ? double.NaN : value;
 		}
 		catch (IndexOutOfRangeException)
@@ -602,12 +611,6 @@ public class ShapeBuffer
 				$"in a shape buffer of length {_bytes.Length}");
 		}
 	}
-
-	//private static double FromAVNaN(double value) =>
-	//	value < -1E+38 ? double.NaN : value;
-
-	//private static double ToAVNaN(double value) =>
-	//	double.IsNaN(value) ? double.MinValue : value;
 
 	private static Exception InvalidShapeBuffer(string? message)
 	{

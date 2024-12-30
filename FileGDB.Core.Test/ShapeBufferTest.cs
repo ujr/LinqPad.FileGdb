@@ -13,10 +13,12 @@ public class ShapeBufferTest
 		var buffer = new ShapeBuffer(bytes);
 
 		Assert.Equal(20, buffer.Length);
+		Assert.Equal(ShapeType.GeneralPoint, buffer.ShapeType);
 		Assert.Equal(GeometryType.Point, buffer.GeometryType);
 		Assert.False(buffer.HasZ);
 		Assert.False(buffer.HasM);
 		Assert.False(buffer.HasID);
+		Assert.False(buffer.MayHaveCurves);
 		Assert.True(buffer.IsEmpty);
 		Assert.Equal(1, buffer.NumPoints); // sic
 		Assert.Equal(1, buffer.NumParts); // sic
@@ -37,10 +39,12 @@ public class ShapeBufferTest
 		var buffer = new ShapeBuffer(bytes);
 
 		Assert.Equal(40, buffer.Length);
+		Assert.Equal(ShapeType.GeneralPoint, buffer.ShapeType);
 		Assert.Equal(GeometryType.Point, buffer.GeometryType);
 		Assert.True(buffer.HasZ);
 		Assert.True(buffer.HasM);
 		Assert.True(buffer.HasID);
+		Assert.False(buffer.MayHaveCurves);
 		Assert.True(buffer.IsEmpty);
 		Assert.Equal(1, buffer.NumPoints); // sic
 		Assert.Equal(1, buffer.NumParts); // sic
@@ -61,10 +65,12 @@ public class ShapeBufferTest
 		var buffer = new ShapeBuffer(bytes);
 
 		Assert.Equal(296, buffer.Length);
+		Assert.Equal(ShapeType.GeneralPolyline, buffer.ShapeType);
 		Assert.Equal(GeometryType.Polyline, buffer.GeometryType);
 		Assert.True(buffer.HasZ);
 		Assert.True(buffer.HasM);
 		Assert.True(buffer.HasID);
+		Assert.False(buffer.MayHaveCurves); // this shape does not have the Curves flag
 		Assert.False(buffer.IsEmpty);
 		Assert.Equal(6, buffer.NumPoints);
 		Assert.Equal(1, buffer.NumParts);
@@ -81,10 +87,12 @@ public class ShapeBufferTest
 		var buffer = new ShapeBuffer(bytes);
 
 		Assert.Equal(280, buffer.Length);
+		Assert.Equal(ShapeType.GeneralPolyline, buffer.ShapeType);
 		Assert.Equal(GeometryType.Polyline, buffer.GeometryType);
 		Assert.True(buffer.HasZ);
 		Assert.True(buffer.HasM);
 		Assert.False(buffer.HasID);
+		Assert.True(buffer.MayHaveCurves); // this shape has the Curves flag
 		Assert.False(buffer.IsEmpty);
 		Assert.Equal(4, buffer.NumPoints);
 		Assert.Equal(1, buffer.NumParts);
@@ -102,6 +110,7 @@ public class ShapeBufferTest
 		var buffer = new ShapeBuffer(bytes);
 
 		Assert.Equal(20, buffer.Length);
+		Assert.Equal(ShapeType.GeneralPoint, buffer.ShapeType);
 		Assert.Equal(GeometryType.Point, buffer.GeometryType);
 		Assert.False(buffer.HasZ);
 		Assert.False(buffer.HasM);
@@ -126,6 +135,7 @@ public class ShapeBufferTest
 		var buffer = new ShapeBuffer(bytes);
 
 		Assert.Equal(180, buffer.Length);
+		Assert.Equal(ShapeType.GeneralMultipoint, buffer.ShapeType);
 		Assert.Equal(GeometryType.Multipoint, buffer.GeometryType);
 		Assert.False(buffer.HasZ);
 		Assert.False(buffer.HasM);
