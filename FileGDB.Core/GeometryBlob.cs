@@ -7,7 +7,9 @@ namespace FileGDB.Core;
 
 /// <summary>
 /// The original bytes stored in the File Geodatabase that represent
-/// a geometry. Can translate the same geometry to an Esri Shape Buffer.
+/// a geometry (available through the <see cref="Bytes"/> property).
+/// Can translate the same geometry to an Esri Shape Buffer and to
+/// an "unpacked" Shape instance (easy access to coordinates).
 /// </summary>
 public class GeometryBlob
 {
@@ -40,6 +42,7 @@ public class GeometryBlob
 	/// buffer. Throws a <see cref="FileGDBException"/> if we cannot
 	/// parse the geometry blob.
 	/// </summary>
+	/// <remarks>This is a convenience wrapper around <see cref="Read"/></remarks>
 	public ShapeBuffer ShapeBuffer => _buffer ??= GetShapeBuffer(null);
 
 	/// <summary>
@@ -47,23 +50,30 @@ public class GeometryBlob
 	/// Throws a <see cref="FileGDBException"/> if we cannot parse the
 	/// geometry blob.
 	/// </summary>
+	/// <remarks>This is a convenience wrapper around <see cref="Read"/></remarks>
 	public Shape Shape => _shape ??= GetShape(null);
 
-	public ShapeBuffer GetShapeBuffer(ShapeFactory? factory, bool validate = true)
+	private ShapeBuffer GetShapeBuffer(ShapeFactory? factory, bool validate = true)
 	{
 		factory ??= new ShapeFactory();
 		Read(factory, validate);
 		return factory.ToShapeBuffer();
 	}
 
-	public Shape GetShape(ShapeFactory? factory, bool validate = true)
+	private Shape GetShape(ShapeFactory? factory, bool validate = true)
 	{
 		factory ??= new ShapeFactory();
 		Read(factory, validate);
 		return factory.ToShape();
 	}
 
-	private void Read(ShapeFactory factory, bool validate = true)
+	/// <summary>
+	/// Read this geometry blob into the given shape factory.
+	/// </summary>
+	/// <remarks>When reading many geometry blobs, prefer this method
+	/// (reusing a <see cref="ShapeFactory"/> instance) over reading the
+	/// <see cref="Shape"/> and <see cref="ShapeBuffer"/> properties.</remarks>
+	public void Read(ShapeFactory factory, bool validate = true)
 	{
 		if (factory is null)
 			throw new ArgumentNullException(nameof(factory));

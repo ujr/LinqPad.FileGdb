@@ -28,12 +28,12 @@ public class GeometryDef
 	public double XYScale { get; set; }
 	public double XYTolerance { get; set; }
 
-	public bool HasZ { get; set; }
+	public bool HasZ { get; }
 	public double ZOrigin { get; set; }
 	public double ZScale { get; set; }
 	public double ZTolerance { get; set; }
 
-	public bool HasM { get; set; }
+	public bool HasM { get; }
 	public double MOrigin { get; set; }
 	public double MScale { get; set; }
 	public double MTolerance { get; set; }

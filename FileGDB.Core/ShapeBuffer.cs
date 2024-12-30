@@ -43,8 +43,6 @@ public class ShapeBuffer
 
 	public int Length => _bytes.Length;
 
-	public byte this[int offset] => _bytes[offset];
-
 	public IReadOnlyList<byte> Bytes => _bytes;
 
 	public ShapeType ShapeType => GetShapeType(_shapeType);
@@ -732,6 +730,10 @@ public class ShapeBuffer
 		return (shapeType & (uint)Flags.HasID) != 0;
 	}
 
+	/// <returns>True iff the given shape type can have curves</returns>
+	/// <remarks>Curves may only occur in polylines and polygons that have the
+	/// HasCurves modifier flag, or in a GeneralPolyline or a GeneralPolygon with
+	/// no modifier flag at all. Here "curves" are non-linear segments.</remarks>
 	public static bool GetMayHaveCurves(uint shapeType)
 	{
 		// special case mentioned in Ext Shp Buf Fmt p.4:
@@ -782,17 +784,6 @@ public class ShapeBuffer
 				throw new ArgumentOutOfRangeException(nameof(geometryType),
 					geometryType, $"Unknown geometry type: {geometryType}");
 		}
-	}
-
-	public static int GetShapeType(uint shapeType, bool hasZ, bool hasM, bool hasID, bool hasCurves = false)
-	{
-		var generalType = GetGeneralType(shapeType);
-		var type = (uint)generalType;
-		if (hasZ) type |= (uint)Flags.HasZ;
-		if (hasM) type |= (uint)Flags.HasM;
-		if (hasID) type |= (uint)Flags.HasID;
-		if (hasCurves) type |= (uint)Flags.HasCurves;
-		return unchecked((int)type);
 	}
 
 	public static uint GetShapeType(GeometryType geometryType, bool hasZ, bool hasM, bool hasID, bool hasCurves = false)

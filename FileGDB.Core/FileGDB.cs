@@ -199,7 +199,7 @@ public sealed class FileGDB : IDisposable
 /// <summary>
 /// Represents a single FGDB table. Each FGDB table has at least two files:
 /// - aXXXXXXXX.gdbtable - the data file (field descriptions and row data)
-/// - aXXXXXXXX.gdbtablx - the index file (row offsets)
+/// - aXXXXXXXX.gdbtablx - the index file (row offsets by OID)
 /// and may have additional files for spatial and/or attribute indexes:
 /// - aXXXXXXXX.NAME.atx - attribute index
 /// - aXXXXXXXX.NAME.spx - spatial index
@@ -211,21 +211,55 @@ public sealed class Table : IDisposable
 	private BitArray? _blockMap;
 	private IReadOnlyList<IndexInfo>? _indexes;
 
-	public string BaseName { get; } // "aXXXXXXXX"
-	public string FolderPath { get; } // "Path\To\MyFile.gdb"
+	/// <summary>The base name of the files for this table, always
+	/// of the form aXXXXXXXX where XXXXXXXX is the zero-padded
+	/// hexadecimal number of the table.</summary>
+	public string BaseName { get; }
 
+	/// <summary>The folder that contains all files of this file
+	/// geodatabase, conventionally with the extension ".gdb"</summary>
+	public string FolderPath { get; }
+
+	/// <summary>Number of rows in this table (not counting deleted rows)</summary>
 	public long RowCount { get; private set; }
+
+	/// <summary>Number of fields on this table  (including the implicit Object ID field)</summary>
 	public int FieldCount { get; private set; }
+
+	/// <summary>The version of this table: 3 if it was created
+	/// with ArcGIS 9.x, 4 if created with ArcGIS 10.x, and may
+	/// be 6 if using new ArcGIS Pro 3.2 features</summary>
 	public int Version { get; private set; }
-	public int OffsetSize { get; private set; } // bytes per offset in .gdbtablx file, 4 or 5 or 6
+
+	/// <summary>Bytes per offset in the .gdbtablx file: 4 or 5 or 6</summary>
+	public int OffsetSize { get; private set; }
+
+	/// <summary>The geometry type, or GeometryType.Null
+	/// if this table has no geometry</summary>
 	public GeometryType GeometryType { get; private set; }
+
 	public bool HasZ { get; private set; }
 	public bool HasM { get; private set; }
 	public bool UseUtf8 { get; private set; }
+
+	/// <summary>The fields on this table (name, type, nullable, etc.)</summary>
+	/// <remarks>Values for the fields will be returned in the same order</remarks>
 	public IReadOnlyList<FieldInfo> Fields { get; private set; }
-	public int MaxEntrySize { get; private set; } // max(row sizes and field description section)
+
+	/// <summary>Max of all row sizes and the field description section</summary>
+	/// <remarks>Probably useful to allocate a buffer; not used by the code here</remarks>
+	public int MaxEntrySize { get; private set; }
+
+	/// <summary>The highest Object ID ever used</summary>
+	/// <remarks>This value is stored in the .gdbtablx file and
+	/// equals the number of rows including deleted rows</remarks>
 	public long MaxObjectID { get; private set; }
+
+	/// <summary>Size of .gdbtable file in bytes</summary>
+	/// <remarks>Should equal new FileInfo(GetDataFilePath()).Length</remarks>
 	public long FileSizeBytes { get; private set; }
+
+	/// <summary>Info on the indexes associated with this table</summary>
 	public IReadOnlyList<IndexInfo> Indexes => _indexes ??= LoadIndexes();
 
 	private Table(string baseName, string folderPath)
@@ -241,6 +275,7 @@ public sealed class Table : IDisposable
 		Fields = new ReadOnlyCollection<FieldInfo>(Array.Empty<FieldInfo>());
 	}
 
+	/// <returns>Full path to the data file (.gdbtable)</returns>
 	public string GetDataFilePath()
 	{
 		var dataFileName = Path.ChangeExtension(BaseName, ".gdbtable");
@@ -248,6 +283,7 @@ public sealed class Table : IDisposable
 		return dataFilePath;
 	}
 
+	/// <returns>Full path to the index file (.gdbtablx)</returns>
 	public string GetIndexFilePath()
 	{
 		var indexFileName = Path.ChangeExtension(BaseName, ".gdbtablx");
@@ -469,6 +505,10 @@ public sealed class Table : IDisposable
 		return values;
 	}
 
+	/// <summary>Read rows from this table</summary>
+	/// <param name="whereClause">NOT YET IMPLEMENTED (pass null)</param>
+	/// <param name="extent">NOT YET IMPLEMENTED (pass null)</param>
+	/// <returns>A cursor object to iterate over the result set</returns>
 	public RowsResult ReadRows(string? whereClause, Envelope? extent)
 	{
 		whereClause = Canonical(whereClause);
@@ -531,28 +571,6 @@ public sealed class Table : IDisposable
 
 		oid -= 1; // from external 1-based to internal 0-based
 		if (oid < 0) return -1;
-
-		/*
-		   if pabyTablXBlockMap:
-		       iBlock = fid // 1024
-		       # Check if the block is not empty
-		       if TEST_BIT(pabyTablXBlockMap, iBlock) == 0:
-		           continue
-
-		       # As we do sequential reading, optimization to avoid recomputing
-		       # the number of blocks since the beginning of the map
-		       assert iBlock >= nCountBlocksBeforeIBlockIdx
-		       nCountBlocksBefore = nCountBlocksBeforeIBlockValue
-		       for i in range(nCountBlocksBeforeIBlockIdx, iBlock):
-		           nCountBlocksBefore += TEST_BIT(pabyTablXBlockMap, i)
-
-		       nCountBlocksBeforeIBlockIdx = iBlock
-		       nCountBlocksBeforeIBlockValue = nCountBlocksBefore
-		       iCorrectedRow = nCountBlocksBefore * 1024 + (fid % 1024)
-		       fx.seek(16 + size_tablx_offsets * iCorrectedRow)
-		   else:
-		       fx.seek(16 + fid * size_tablx_offsets, 0)
-		 */
 
 		if (_blockMap != null)
 		{
@@ -689,7 +707,7 @@ public sealed class Table : IDisposable
 	{
 		// assume reader positioned after version field
 
-		var n1024Blocks = indexReader.ReadInt32(); // TODO rename num1KBlocks
+		var num1KBlocks = indexReader.ReadInt32();
 		var numRows = indexReader.ReadInt32(); // including deleted rows!
 
 		OffsetSize = indexReader.ReadInt32(); // 4, 5, or 6 (bytes per offset)
@@ -698,26 +716,26 @@ public sealed class Table : IDisposable
 
 		MaxObjectID = numRows;
 
-		if (n1024Blocks == 0)
+		if (num1KBlocks == 0)
 			Debug.Assert(numRows == 0);
 		else
 			Debug.Assert(numRows > 0);
 
-		if (n1024Blocks > 0)
+		if (num1KBlocks > 0)
 		{
 			// Seek to trailer section:
-			indexReader.Seek(16 + 1024 * n1024Blocks * OffsetSize);
+			indexReader.Seek(16 + 1024 * num1KBlocks * OffsetSize);
 
 			var nBitmapInt32Words = indexReader.ReadUInt32();
 			var nBitsForBlockMap = indexReader.ReadUInt32();
-			var n1024BlocksBis = indexReader.ReadUInt32();
+			var num1KBlocksBis = indexReader.ReadUInt32();
 			var nLeadingNonZero32BitWords = indexReader.ReadUInt32();
 
-			Debug.Assert(n1024Blocks == n1024BlocksBis);
+			Debug.Assert(num1KBlocks == num1KBlocksBis);
 
 			if (nBitmapInt32Words == 0)
 			{
-				Debug.Assert(nBitsForBlockMap == n1024Blocks);
+				Debug.Assert(nBitsForBlockMap == num1KBlocks);
 				_blockMap = null;
 			}
 			else
@@ -729,7 +747,7 @@ public sealed class Table : IDisposable
 				int nCountBlocks = 0;
 				for (int i = 0; i < nBitsForBlockMap; i++)
 					nCountBlocks += _blockMap[i] ? 1 : 0;
-				Debug.Assert(nCountBlocks == n1024Blocks);
+				Debug.Assert(nCountBlocks == num1KBlocks);
 			}
 		}
 		else
@@ -828,7 +846,7 @@ public sealed class Table : IDisposable
 		var headerBytes = reader.ReadInt32(); // excluding this field
 		Version = reader.ReadInt32(); // 3 for FGDB at 9.x, 4 for FGDB at 10.x, 6 for FGDB using Pro 3.2 features (64bit OID, new field types)
 		var flags = reader.ReadUInt32(); // see decoding below
-		FieldCount = reader.ReadInt16(); // including the implicit OBJECTID field!
+		FieldCount = reader.ReadInt16(); // including the implicit Object ID field!
 
 		// Decode known flag bits:
 		UseUtf8 = (flags & (1 << 8)) != 0;

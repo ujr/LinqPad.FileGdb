@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
+//using System.IO.Compression;
 using System.Linq;
 using Xunit;
 using Xunit.Abstractions;
@@ -35,6 +35,28 @@ public class GeometryBlobTest : IDisposable
 		// remove test data from temp folder
 		//const bool recursive = true;
 		//Directory.Delete(_myTempPath, recursive);
+	}
+
+	[Fact]
+	public void CanReadBlob()
+	{
+		var blob = ReadGeometryBlob("TestGeom.gdb", "POINTS", 1);
+
+		// At least three bytes: type, x coordinate, y coordinate:
+		Assert.True(blob.Length >= 3, "Unlikely small Length");
+
+		// Length is an alias for Bytes.Count:
+		Assert.Equal(blob.Length, blob.Bytes.Count);
+
+		var factory = new ShapeFactory();
+
+		blob.Read(factory);
+
+		var shape = factory.ToShape();
+		Assert.NotNull(shape);
+
+		var buffer = factory.ToShapeBuffer();
+		Assert.NotNull(buffer);
 	}
 
 	[Fact]
@@ -545,20 +567,20 @@ public class GeometryBlobTest : IDisposable
 		}
 		else
 		{
-			// Bounding boxes seem to differ, but within GeometryDef.XYScale:
+			// Bounding boxes seem to differ, but within GeometryDef.XYScale (aka XY Resolution):
 
-			GetBox(expected, 4, out var x0e, out var y0e, out var x1e, out var y1e);
-			GetBox(actual.Bytes.ToArray(), 4, out var x0a, out var y0a, out var x1a, out var y1a);
+			GetBox(expected, 4, out var ex0, out var ey0, out var ex1, out var ey1);
+			GetBox(actual.Bytes.ToArray(), 4, out var ax0, out var ay0, out var ax1, out var ay1);
 
-			double dx0 = x0e - x0a;
-			double dy0 = y0e - y0a;
-			double dx1 = x1e - x1a;
-			double dy1 = y1e - y1a;
+			double dx0 = ex0 - ax0;
+			double dy0 = ey0 - ay0;
+			double dx1 = ex1 - ax1;
+			double dy1 = ey1 - ay1;
 
 			if (dx0 > 0 || dy0 > 0 || dx1 > 0 || dy1 > 0)
 			{
-				_output.WriteLine($"Actual:   {x0a} {y0a} .. {x1a} {y1a}");
-				_output.WriteLine($"Expected: {x0e} {y0e} .. {x1e} {y1e}");
+				_output.WriteLine($"Actual:   {ax0} {ay0} .. {ax1} {ay1}");
+				_output.WriteLine($"Expected: {ex0} {ey0} .. {ex1} {ey1}");
 				_output.WriteLine($"Exp-Act:  {dx0:F12} {dy0:F12} .. {dx1:F12} {dy1:F12}");
 
 				if (dx0 > boxTolerance || dy0 > boxTolerance ||
@@ -568,8 +590,8 @@ public class GeometryBlobTest : IDisposable
 				}
 			}
 
-			// skip 1st 4+32 bytes (shape type and bbox)
-			int count = 4 + 4 * 8;
+			// skip 1st 4+32 bytes (shape type and bounding box)
+			const int count = 4 + 4 * 8;
 			Assert.Equal(expected.Skip(count).ToArray(), actual.Bytes.Skip(count).ToArray());
 		}
 
