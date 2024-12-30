@@ -192,6 +192,7 @@ public class FileGdbDriver : DynamicDataContextDriver
 				objectToWrite = Util.OnDemand(description, () => curves);
 			}
 		}
+
 		base.PreprocessObjectToWrite(ref objectToWrite, info);
 	}
 
@@ -245,7 +246,7 @@ public class FileGdbDriver : DynamicDataContextDriver
 		var folderPathItem = new ExplorerItem("FolderPath", ExplorerItemKind.Property, ExplorerIcon.Parameter)
 		{
 			IsEnumerable = false,
-			DragText = nameof(FileGdbContext.FolderPath),
+			DragText = nameof(DriverBase.FolderPath),
 			ToolTipText = gdb?.FolderPath ?? "Full path to the .gdb/ folder"
 		};
 
@@ -277,9 +278,7 @@ public class FileGdbDriver : DynamicDataContextDriver
 
 		if (debugMode)
 		{
-			items.Add(new ExplorerItem($"NameSpace={nameSpace}", ExplorerItemKind.Schema, ExplorerIcon.Box));
-			items.Add(new ExplorerItem($"TypeName={typeName}", ExplorerItemKind.Schema, ExplorerIcon.Box));
-			items.Add(new ExplorerItem("SourceCode", ExplorerItemKind.Property, ExplorerIcon.Box)
+			items.Add(new ExplorerItem($"{nameSpace}.{typeName}", ExplorerItemKind.Property, ExplorerIcon.Box)
 			{
 				IsEnumerable = false,
 				DragText = source,
@@ -340,38 +339,17 @@ using System.Diagnostics;
 
 namespace $$NAMESPACE$$;
 
-public class $$TYPENAME$$
+public class $$TYPENAME$$ : FileGDB.LinqPadDriver.DriverBase
 {
-  private readonly FileGDB.Core.FileGDB _gdb;
-  private readonly bool _debugMode;
-
-  public $$TYPENAME$$(string gdbFolderPath, bool debugMode)
+  public $$TYPENAME$$(string gdbFolderPath, bool debugMode) : base(gdbFolderPath, debugMode)
   {
-    if (string.IsNullOrEmpty(gdbFolderPath))
-      throw new ArgumentNullException(nameof(gdbFolderPath));
-    _gdb = FileGDB.Core.FileGDB.Open(gdbFolderPath);
-    _debugMode = debugMode;
-    GDB = new SystemTables(_gdb, debugMode);
-    Tables = new UserTables(_gdb, debugMode);
+    var gdb = GetFileGDB();
+    GDB = new SystemTables(gdb, debugMode);
+    Tables = new UserTables(gdb, debugMode);
   }
 
-  public string FolderPath => _gdb.FolderPath;
-  //public IEnumerable<string> TableNames => _gdb.TableNames;
-  public IEnumerable<FileGDB.Core.FileGDB.CatalogEntry> Catalog => _gdb.Catalog;
   public SystemTables GDB { get; }
   public UserTables Tables { get; }
-
-  public FileGDB.Core.Table OpenTable(int id)
-  {
-    if (_debugMode) Debugger.Launch();
-    return _gdb.OpenTable(id);
-  }
-
-  public FileGDB.Core.Table OpenTable(string name)
-  {
-    if (_debugMode) Debugger.Launch();
-    return _gdb.OpenTable(name);
-  }
 
   public class SystemTables : FileGDB.LinqPadDriver.TableContainer
   {
@@ -825,5 +803,44 @@ public abstract class TableContainer
 			_cache.Add(tableName, table);
 		}
 		return (T)table;
+	}
+}
+
+[PublicAPI]
+public abstract class DriverBase
+{
+	private readonly Core.FileGDB _gdb;
+	private readonly bool _debugMode;
+
+	protected DriverBase(string gdbFolderPath, bool debugMode)
+	{
+		if (string.IsNullOrEmpty(gdbFolderPath))
+			throw new ArgumentNullException(nameof(gdbFolderPath));
+		_gdb = Core.FileGDB.Open(gdbFolderPath);
+		_debugMode = debugMode;
+	}
+
+	protected Core.FileGDB GetFileGDB() => _gdb;
+
+	public string FolderPath => _gdb.FolderPath;
+	//public IEnumerable<string> TableNames => _gdb.TableNames;
+	public IEnumerable<Core.FileGDB.CatalogEntry> Catalog => _gdb.Catalog;
+
+	public Table OpenTable(int id)
+	{
+		if (_debugMode)
+		{
+			Debugger.Launch();
+		}
+		return _gdb.OpenTable(id);
+	}
+
+	public Table OpenTable(string name)
+	{
+		if (_debugMode)
+		{
+			Debugger.Launch();
+		}
+		return _gdb.OpenTable(name);
 	}
 }
