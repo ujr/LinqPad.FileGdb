@@ -1,6 +1,7 @@
 using System;
 using System.Text;
 using System.Windows.Forms;
+using FileGDB.Core;
 using LINQPad.Extensibility.DataContext;
 
 namespace FileGDB.LinqPadDriver;
@@ -88,6 +89,32 @@ public static class Utils
 		}
 
 		result.Append('"');
+	}
+
+	public static string GetDisplayName(GeometryDef geometryDef)
+	{
+		if (geometryDef is null)
+			throw new ArgumentNullException(nameof(geometryDef));
+
+		var sb = new StringBuilder();
+		sb.Append(geometryDef.GeometryType);
+
+		if (geometryDef.HasZ || geometryDef.HasM)
+		{
+			sb.Append(' ');
+
+			if (geometryDef.HasZ)
+			{
+				sb.Append('Z');
+			}
+
+			if (geometryDef.HasM)
+			{
+				sb.Append('M');
+			}
+		}
+
+		return sb.ToString();
 	}
 
 	public static IWin32Window GetIWin32Window(this System.Windows.Media.Visual visual)

@@ -191,6 +191,14 @@ public class FileGdbDriver : DynamicDataContextDriver
 				objectToWrite = Util.OnDemand(description, () => curves);
 			}
 		}
+		else if (info.ParentHierarchy.FirstOrDefault() is FieldInfo)
+		{
+			if (objectToWrite is GeometryDef geometryDef)
+			{
+				var description = Utils.GetDisplayName(geometryDef);
+				objectToWrite = Util.OnDemand(description, () => geometryDef);
+			}
+		}
 
 		base.PreprocessObjectToWrite(ref objectToWrite, info);
 	}

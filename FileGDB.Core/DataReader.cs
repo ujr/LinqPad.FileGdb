@@ -99,6 +99,16 @@ internal class DataReader : IDisposable
 		return _reader.ReadDouble();
 	}
 
+	public string ReadUtf8(int numBytes)
+	{
+		if (numBytes < 0)
+			throw new ArgumentOutOfRangeException(nameof(numBytes));
+
+		var bytes = ReadBytes(numBytes);
+		return Encoding.UTF8.GetString(bytes);
+		// TODO implementation avoiding byte array alloc
+	}
+
 	public string ReadUtf16(int numChars)
 	{
 		if (numChars < 0)

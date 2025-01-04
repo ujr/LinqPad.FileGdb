@@ -471,7 +471,7 @@ public sealed class Table : IDisposable
 					values[i] = ReadTextField(_dataReader, UseUtf8);
 					break;
 				case FieldType.DateTime:
-					values[i] = ReadDateTimeField(_dataReader);
+					values[i] = ReadDateTimeValue(_dataReader);
 					break;
 				case FieldType.ObjectID:
 					values[i] = oid;
@@ -495,13 +495,13 @@ public sealed class Table : IDisposable
 					values[i] = _dataReader.ReadInt64();
 					break;
 				case FieldType.DateOnly:
-					values[i] = ReadDateOnlyField(_dataReader);
+					values[i] = ReadDateOnlyValue(_dataReader);
 					break;
 				case FieldType.TimeOnly:
-					values[i] = ReadTimeOnlyField(_dataReader);
+					values[i] = ReadTimeOnlyValue(_dataReader);
 					break;
 				case FieldType.DateTimeOffset:
-					values[i] = ReadDateTimeOffsetField(_dataReader);
+					values[i] = ReadDateTimeOffsetValue(_dataReader);
 					break;
 				default:
 					throw new NotSupportedException($"Unknown field type: {field.Type}");
@@ -695,21 +695,21 @@ public sealed class Table : IDisposable
 		return new Guid(bytes);
 	}
 
-	private static DateTime ReadDateTimeField(DataReader reader)
+	private static DateTime ReadDateTimeValue(DataReader reader)
 	{
 		double days = reader.ReadDouble();
 		var epoch = new DateTime(1899, 12, 30, 0, 0, 0); // 1899-12-30 00:00:00
 		return epoch.AddDays(days);
 	}
 
-	private static DateOnly ReadDateOnlyField(DataReader reader)
+	private static DateOnly ReadDateOnlyValue(DataReader reader)
 	{
 		double days = reader.ReadDouble();
 		var epoch = new DateTime(1899, 12, 30, 0, 0, 0); // 1899-12-30 00:00:00
 		return DateOnly.FromDateTime(epoch.AddDays(days));
 	}
 
-	private static TimeOnly ReadTimeOnlyField(DataReader reader)
+	private static TimeOnly ReadTimeOnlyValue(DataReader reader)
 	{
 		double fraction = reader.ReadDouble();
 		// 0 = 00:00:00, 1 = 23:59:59.9... clamp to range:
@@ -720,7 +720,7 @@ public sealed class Table : IDisposable
 		return TimeOnly.FromTimeSpan(ts);
 	}
 
-	private static DateTimeOffset ReadDateTimeOffsetField(DataReader reader)
+	private static DateTimeOffset ReadDateTimeOffsetValue(DataReader reader)
 	{
 		double daysSinceEpoch = reader.ReadDouble();
 		int utcOffsetMinutes = reader.ReadInt16();
@@ -931,22 +931,22 @@ public sealed class Table : IDisposable
 		string name, string alias, FieldType type, DataReader reader,
 		GeometryType geometryType, bool tableHasZ, bool tableHasM)
 	{
-		byte flag, size;
+		int size;
+		byte flag;
 		var field = new FieldInfo(name, alias, type);
 
 		switch (type)
 		{
 			case FieldType.ObjectID:
-				_ = reader.ReadByte(); // always 2 (4)
-				_ = reader.ReadByte(); // always 4 (2)
-				field.Nullable = false;
+				size = reader.ReadByte(); // always 4 (or 8)
+				flag = reader.ReadByte(); // always 2 (required, not nullable, not editable)
+				//field.Nullable = false;
 				break;
 
 			case FieldType.Geometry:
-				var geomDef = new GeometryDef(geometryType, tableHasZ, tableHasM);
-				_ = reader.ReadByte(); // unknown (always 0?)
+				size = reader.ReadByte(); // unknown (always 0?)
 				flag = reader.ReadByte();
-				field.Nullable = (flag & 1) != 0;
+				var geomDef = new GeometryDef(geometryType, tableHasZ, tableHasM);
 
 				var wktLen = reader.ReadInt16(); // in bytes
 				var wkt = reader.ReadUtf16(wktLen / 2); // in chars
@@ -1018,21 +1018,21 @@ public sealed class Table : IDisposable
 				break;
 
 			case FieldType.String:
-				field.Length = reader.ReadInt32();
+				size = reader.ReadInt32();
 				flag = reader.ReadByte();
-				field.Nullable = (flag & 1) != 0;
+				field.Length = size;
 				var len = reader.ReadVarUInt();
 				if (len > 0 && (flag & 4) != 0)
 				{
-					var deft = reader.ReadBytes((int)len);
-					//reader.SkipBytes(len); // default value TODO record in FieldInfo? how encoded?
+					if (len > int.MaxValue)
+						throw Error("Default value for String field too large for this API");
+					field.DefaultValue = ReadDefaultValue(type, (uint)len, reader);
 				}
 				break;
 
 			case FieldType.Blob:
-				_ = reader.ReadByte(); // unknown
+				size = reader.ReadByte(); // always zero
 				flag = reader.ReadByte();
-				field.Nullable = (flag & 1) != 0;
 				break;
 
 			case FieldType.GUID:
@@ -1040,15 +1040,13 @@ public sealed class Table : IDisposable
 				// The size is 38, suggesting that the GUID is stored like
 				// "{xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx}" (aka registry format)
 				// but indeed it's stored as 16 bytes
-				size = reader.ReadByte();
+				size = reader.ReadByte(); // always 38
 				flag = reader.ReadByte();
-				field.Nullable = (flag & 1) != 0;
 				break;
 
 			case FieldType.XML:
 				size = reader.ReadByte(); // 0?
 				flag = reader.ReadByte();
-				field.Nullable = (flag & 1) != 0;
 				break;
 
 			case FieldType.Int16:
@@ -1062,20 +1060,18 @@ public sealed class Table : IDisposable
 			case FieldType.DateTimeOffset:
 				size = reader.ReadByte(); // e.g. 2 for Int16
 				flag = reader.ReadByte();
-				field.Nullable = (flag & 1) != 0;
 				var dvl = reader.ReadByte();
 				if (dvl > 0 && (flag & 4) != 0)
 				{
-					var deflt = reader.ReadBytes(dvl);
+					field.DefaultValue = ReadDefaultValue(type, dvl, reader);
 					//reader.SkipBytes(dvl); // default value (skip for now)
 				}
 				break;
 
 			case FieldType.Raster:
-				_ = reader.ReadByte();
+				size = reader.ReadByte();
 				flag = reader.ReadByte();
-				field.Nullable = (flag & 1) != 0;
-				var numChars = reader.ReadByte();
+				int numChars = reader.ReadByte();
 				var rasterColumn = reader.ReadUtf16(numChars);
 				wktLen = reader.ReadInt16();
 				wkt = reader.ReadUtf16(wktLen / 2); // in chars
@@ -1117,7 +1113,108 @@ public sealed class Table : IDisposable
 				throw new NotSupportedException($"Unknown field type: {type}");
 		}
 
+		field.Nullable = (flag & 1) != 0;
+		field.Required = (flag & 2) != 0;
+		field.Editable = (flag & 4) != 0;
+
+		field.Size = size;
+		field.Flags = flag;
+
 		return field;
+	}
+
+	private static object? ReadDefaultValue(FieldType fieldType, uint size, DataReader reader)
+	{
+		object? result = null;
+		bool read = false;
+
+		switch (fieldType)
+		{
+			case FieldType.Int16:
+				if (size == 2)
+				{
+					result = reader.ReadInt16();
+					read = true;
+				}
+				break;
+
+			case FieldType.Int32:
+				if (size == 4)
+				{
+					result = reader.ReadInt32();
+					read = true;
+				}
+				break;
+
+			case FieldType.Int64:
+				if (size == 8)
+				{
+					result = reader.ReadInt64();
+					read = true;
+				}
+				break;
+
+			case FieldType.Single:
+				if (size == 4)
+				{
+					result = reader.ReadSingle();
+					read = true;
+				}
+				break;
+
+			case FieldType.Double:
+				if (size == 8)
+				{
+					result = reader.ReadDouble();
+					read = true;
+				}
+				break;
+
+			case FieldType.DateTime:
+				if (size == 8)
+				{
+					result = ReadDateTimeValue(reader);
+					read = true;
+				}
+				break;
+
+			case FieldType.DateOnly:
+				if (size == 8)
+				{
+					result = ReadDateOnlyValue(reader);
+					read = true;
+				}
+				break;
+
+			case FieldType.TimeOnly:
+				if (size == 8)
+				{
+					result = ReadTimeOnlyValue(reader);
+					read = true;
+				}
+				break;
+
+			case FieldType.DateTimeOffset:
+				if (size == 8 + 2)
+				{
+					result = ReadDateTimeOffsetValue(reader);
+					read = true;
+				}
+				break;
+
+			case FieldType.String:
+				// Empirical: UTF-8, but didn't test with old FGDBs -- TODO how about table's Utf8-flag?
+				result = reader.ReadUtf8((int)size);
+				read = true;
+				break;
+		}
+
+		if (!read)
+		{
+			reader.SkipBytes(size);
+		}
+
+		return result;
 	}
 
 	private IReadOnlyList<IndexInfo> LoadIndexes()
