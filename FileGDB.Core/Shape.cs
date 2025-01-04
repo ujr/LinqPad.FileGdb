@@ -679,11 +679,11 @@ public abstract class MultipartShape : PointListShape
 		int length = ShapeBuffer.GetMultipartBufferSize(HasZ, HasM, HasID, NumParts, NumPoints);
 
 		bool mayHaveCurves = ShapeBuffer.GetMayHaveCurves(shapeType);
-		int numCurves = NumCurves;
+		int numCurves = _curves?.Count ?? 0;
 
 		if (mayHaveCurves || numCurves > 0) length += 4;
 
-		foreach (var modifier in _curves)
+		foreach (var modifier in Curves)
 		{
 			length += 4 + 4; // startIndex and curveType
 
@@ -753,9 +753,11 @@ public abstract class MultipartShape : PointListShape
 			}
 		}
 
-		if (numCurves > 0)
+		if (mayHaveCurves || numCurves > 0)
 		{
 			offset += ShapeBuffer.WriteInt32(numCurves, bytes, offset);
+
+			Debug.Assert(_curves is not null);
 
 			for (int i = 0; i < numCurves; i++)
 			{

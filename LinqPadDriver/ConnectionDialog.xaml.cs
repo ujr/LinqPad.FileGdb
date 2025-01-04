@@ -4,7 +4,7 @@ using LINQPad.Extensibility.DataContext;
 
 namespace FileGDB.LinqPadDriver;
 
-public partial class ConnectionDialog : Window
+public partial class ConnectionDialog
 {
 	private readonly ConnectionProperties _props;
 

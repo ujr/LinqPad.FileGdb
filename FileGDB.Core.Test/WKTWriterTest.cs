@@ -217,7 +217,7 @@ public class WKTWriterTest
 		buffer.Clear();
 		writer.BeginLineString(hasZ: true, hasID: true);
 		writer.NewPart(); // an allowed no-op
-		writer.AddVertex(0, 0, 0);
+		writer.AddVertex(0, 0);
 		writer.AddVertex(1, 1, 1, id: 1); // id ignored because EmitID is false
 		Assert.Throws<InvalidOperationException>(() => writer.NewPart());
 		writer.AddVertex(1, 2, 3);

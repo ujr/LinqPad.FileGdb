@@ -1,4 +1,4 @@
-namespace LinqPadDriver;
+namespace FileGDB.LinqPadDriver;
 
 internal static class Constants
 {

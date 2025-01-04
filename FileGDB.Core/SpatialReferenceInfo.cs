@@ -24,9 +24,6 @@ public class CoordinateStorageInfo
 	public double XOrigin { get; }
 	public double YOrigin { get; }
 	public double XYScale { get; }
-	//public double XFalseOrigin { get; }
-	//public double YFalseOrigin { get; }
-	//public double XYResolution { get; }
 	public double XYTolerance { get; }
 
 	public double ZFalseOrigin { get; }

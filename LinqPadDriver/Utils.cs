@@ -2,7 +2,6 @@ using System;
 using System.Text;
 using System.Windows.Forms;
 using LINQPad.Extensibility.DataContext;
-using LinqPadDriver;
 
 namespace FileGDB.LinqPadDriver;
 

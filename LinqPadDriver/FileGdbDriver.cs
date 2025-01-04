@@ -9,7 +9,6 @@ using FileGDB.Core;
 using JetBrains.Annotations;
 using LINQPad;
 using LINQPad.Extensibility.DataContext;
-using LinqPadDriver;
 using FieldInfo = FileGDB.Core.FieldInfo;
 
 namespace FileGDB.LinqPadDriver;
