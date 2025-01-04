@@ -367,6 +367,20 @@ public sealed class Table : IDisposable
 		return -1; // no shape field
 	}
 
+	/// <returns>Index of the named field, or -1 if no such field</returns>
+	public int FindField(string fieldName)
+	{
+		for (int i = 0; i < Fields.Count; i++)
+		{
+			if (string.Equals(fieldName, Fields[i].Name, StringComparison.OrdinalIgnoreCase))
+			{
+				return i;
+			}
+		}
+
+		return -1; // not found
+	}
+
 	/// <summary>
 	/// Read raw bytes for the row with the given <paramref name="oid"/>.
 	/// Never overflows the given <paramref name="bytes"/> array, but
@@ -481,9 +495,14 @@ public sealed class Table : IDisposable
 					values[i] = _dataReader.ReadInt64();
 					break;
 				case FieldType.DateOnly:
+					values[i] = ReadDateOnlyField(_dataReader);
+					break;
 				case FieldType.TimeOnly:
+					values[i] = ReadTimeOnlyField(_dataReader);
+					break;
 				case FieldType.DateTimeOffset:
-					throw new NotImplementedException($"Field of type {field.Type} not yet implemented");
+					values[i] = ReadDateTimeOffsetField(_dataReader);
+					break;
 				default:
 					throw new NotSupportedException($"Unknown field type: {field.Type}");
 			}
@@ -556,9 +575,11 @@ public sealed class Table : IDisposable
 			case FieldType.Int64:
 				return typeof(long?);
 			case FieldType.DateOnly:
+				return typeof(DateOnly?);
 			case FieldType.TimeOnly:
+				return typeof(TimeOnly?);
 			case FieldType.DateTimeOffset:
-				return typeof(object); // TODO
+				return typeof(DateTimeOffset?);
 			default:
 				return typeof(object);
 		}
@@ -679,6 +700,35 @@ public sealed class Table : IDisposable
 		double days = reader.ReadDouble();
 		var epoch = new DateTime(1899, 12, 30, 0, 0, 0); // 1899-12-30 00:00:00
 		return epoch.AddDays(days);
+	}
+
+	private static DateOnly ReadDateOnlyField(DataReader reader)
+	{
+		double days = reader.ReadDouble();
+		var epoch = new DateTime(1899, 12, 30, 0, 0, 0); // 1899-12-30 00:00:00
+		return DateOnly.FromDateTime(epoch.AddDays(days));
+	}
+
+	private static TimeOnly ReadTimeOnlyField(DataReader reader)
+	{
+		double fraction = reader.ReadDouble();
+		// 0 = 00:00:00, 1 = 23:59:59.9... clamp to range:
+		if (fraction < 0) fraction = 0;
+		if (fraction > 1) fraction = 1;
+		var ts = TimeSpan.FromDays(1.0);
+		ts *= fraction; // fails if NaN, but this should not occur
+		return TimeOnly.FromTimeSpan(ts);
+	}
+
+	private static DateTimeOffset ReadDateTimeOffsetField(DataReader reader)
+	{
+		double daysSinceEpoch = reader.ReadDouble();
+		int utcOffsetMinutes = reader.ReadInt16();
+		var epoch = new DateTime(1899, 12, 30, 0, 0, 0); // 1899-12-30 00:00:00
+		var dateTime = epoch.AddDays(daysSinceEpoch);
+		Debug.Assert(dateTime.Kind == DateTimeKind.Unspecified);
+		var offset = TimeSpan.FromMinutes(utcOffsetMinutes);
+		return new DateTimeOffset(dateTime, offset);
 	}
 
 	private void ReadIndexHeader(DataReader indexReader)

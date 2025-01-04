@@ -17,3 +17,6 @@
 
 # User's own R# settings
 *.DotSettings.user
+
+# Expanded test data:
+data/TestPro32.gdb/

@@ -5,21 +5,21 @@ Based on reverse-engineered spec by Even Rouault:
 
 ## Notes
 
-- a File GDB is a flat list of tables (.gdbtable files, no hierarchy)
+- a File GDB is a flat list of tables (no hierarchy)
 - the first such table contains the catalog (list of tables)
-- ObjectIDs in the File GDB begin with 1
-- max ObjectID is 2.147.483.648 (by Esri docs, i.e. `2**31`,
-  but I'd guess it's rather `2**31-1`)
+- Object IDs in the File GDB begin with 1
+- max Object ID is 2.147.483.648 (by Esri docs, i.e. `2**31`,
+  but I'd guess it's rather `2**31-1`) (but see next)
 - three known versions: 9.x (very old), 10.x (current), and
-  10.x with 64bit ObjectIDs (optional since ArcGIS Pro 3.2)
+  10.x with 64bit Object IDs (optional since ArcGIS Pro 3.2)
 
 ## Versions
 
 There is not much documentation about Geodatabase versioning.
 The communicated version seems to be the version of the client
 software that created or upgraded the Geodatabase; within the
-data file for a File GDB table is a version field that reads
-3 for 9.x and 4 for 10.x File GDBs.
+data file for a File Geodatabase table is a **version** field
+that reads **3** for 9.x and **4** for 10.x File GDBs.
 
 Quoting from ArcGIS Pro documentation at
 <https://pro.arcgis.com/en/pro-app/latest/help/data/geodatabases/overview/client-geodatabase-compatibility.htm>
@@ -28,8 +28,8 @@ Quoting from ArcGIS Pro documentation at
 > The version for mobile geodatabases \[SQLite] has not changed since ArcGIS Pro 2.7.
 
 Since ArcGIS Pro 3.2 the Object IDs can optionally be 64bit
-integers (before only 32bit). This does not constitute a new
-version of the File GDB.
+integers (before only 32bit). Such tables report **6** as
+their version.
 
 ## Limits
 

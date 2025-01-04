@@ -73,8 +73,8 @@ wkt.Dispose(); // flush and dispose the underlying writer
 ## Limitations
 
 - this is **experimental** code and comes with **no warranty**
-- only a small subset of the File Geodatabase is supported
-- field types DateOnly, TimeOnly, DateTimeOffset are not implemented
+- only a subset of the File Geodatabase is supported
+- Raster fields are not supported
 - MultiPatch geometries are not supported
 - only full table scans are supported
 - indices are not used and not accessible
