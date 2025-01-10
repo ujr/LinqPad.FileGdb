@@ -1008,10 +1008,23 @@ public sealed class Table : IDisposable
 
 				_ = reader.ReadByte(); // always zero?
 
-				geomDef.Grid.Count = reader.ReadInt32(); // 1 or 2 or 3
-				for (int i = 0; i < geomDef.Grid.Count; i++)
+				int gridCount = reader.ReadInt32(); // 1 or 2 or 3
+				for (int i = 0; i < gridCount; i++)
 				{
-					geomDef.Grid[i] = reader.ReadDouble();
+					switch (i)
+					{
+						case 0:
+							geomDef.GridSize0 = reader.ReadDouble();
+							break;
+						case 1:
+							geomDef.GridSize1 = reader.ReadDouble();
+							break;
+						case 2:
+							geomDef.GridSize2 = reader.ReadDouble();
+							break;
+						default:
+							throw Error($"Unexpected grid count: {gridCount}; expect 1 or 2 or 3");
+					}
 				}
 
 				field.GeometryDef = geomDef;
