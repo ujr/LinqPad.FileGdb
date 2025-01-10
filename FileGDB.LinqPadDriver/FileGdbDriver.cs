@@ -737,21 +737,22 @@ public abstract class TableBase
 		return this;
 	}
 
-	[PublicAPI] public int FieldCount => Table.FieldCount;
+	[PublicAPI] public string DataFilePath => Table.GetDataFilePath();
+	[PublicAPI] public string IndexFilePath => Table.GetIndexFilePath();
+	[PublicAPI] public int Version => Table.Version;
+//	[PublicAPI] public long MaxObjectID => Table.MaxObjectID;
 	[PublicAPI] public long RowCount => Table.RowCount;
 	[PublicAPI] public GeometryType GeometryType => Table.GeometryType;
 	[PublicAPI] public bool HasZ => Table.HasZ;
 	[PublicAPI] public bool HasM => Table.HasM;
-	[PublicAPI] public int Version => Table.Version;
-	[PublicAPI] public bool UseUtf8 => Table.UseUtf8;
-	[PublicAPI] public long MaxOID => Table.MaxObjectID;
-	[PublicAPI] public int MaxEntrySize => Table.MaxEntrySize;
-	[PublicAPI] public int OffsetSize => Table.OffsetSize;
-	[PublicAPI] public long DataFileSize => Table.FileSizeBytes;
-	[PublicAPI] public string DataFilePath => Table.GetDataFilePath();
-	[PublicAPI] public string IndexFilePath => Table.GetIndexFilePath();
+//	[PublicAPI] public bool UseUtf8 => Table.UseUtf8;
+//	[PublicAPI] public int MaxEntrySize => Table.MaxEntrySize;
+//	[PublicAPI] public int OffsetSize => Table.OffsetSize;
+//	[PublicAPI] public long DataFileSize => Table.FileSizeBytes;
+//	[PublicAPI] public int FieldCount => Table.FieldCount;
 	[PublicAPI] public IReadOnlyList<FieldInfo> Fields => Table.Fields;
 	[PublicAPI] public IReadOnlyList<IndexInfo> Indexes => Table.Indexes;
+	[PublicAPI] public Table.InternalInfo Internals => Table.Internals;
 
 	[PublicAPI]
 	protected RowsResult SearchRows()
