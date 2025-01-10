@@ -645,7 +645,7 @@ public class $$TABLENAME$$Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<$
 				IsEnumerable = true,
 				//DragText = $"{nameof(FileGdbContext.Table)}[{Utils.FormatString(tableName)}]",
 				DragText = $"Tables.{tableName}",
-				ToolTipText = $"{table.BaseName}, v{table.Version}, {table.RowCount} #rows, {table.MaxObjectID} max OID",
+				ToolTipText = $"{table.BaseName}, v{table.Version}, #rows {table.RowCount}, max OID {table.MaxObjectID} ",
 				Children = CreateColumnItems(table)
 			};
 		}
@@ -740,7 +740,7 @@ public abstract class TableBase
 	[PublicAPI] public string DataFilePath => Table.GetDataFilePath();
 	[PublicAPI] public string IndexFilePath => Table.GetIndexFilePath();
 	[PublicAPI] public int Version => Table.Version;
-//	[PublicAPI] public long MaxObjectID => Table.MaxObjectID;
+	[PublicAPI] public long MaxObjectID => Table.MaxObjectID;
 	[PublicAPI] public long RowCount => Table.RowCount;
 	[PublicAPI] public GeometryType GeometryType => Table.GeometryType;
 	[PublicAPI] public bool HasZ => Table.HasZ;
@@ -783,7 +783,7 @@ public abstract class TableBase
 	}
 
 	[PublicAPI]
-	protected Table Table =>
+	public Table Table =>
 		_table ?? throw new InvalidOperationException("This table wrapper has not been initialized");
 }
 
