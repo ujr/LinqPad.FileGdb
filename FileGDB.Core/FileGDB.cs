@@ -1084,10 +1084,11 @@ public sealed class Table : IDisposable
 			case FieldType.Raster:
 				size = reader.ReadByte();
 				flag = reader.ReadByte();
+				var rasterDef = new RasterDef();
 				int numChars = reader.ReadByte();
-				var rasterColumn = reader.ReadUtf16(numChars);
+				rasterDef.RasterColumn = reader.ReadUtf16(numChars);
 				wktLen = reader.ReadInt16();
-				wkt = reader.ReadUtf16(wktLen / 2); // in chars
+				rasterDef.SpatialReference = reader.ReadUtf16(wktLen / 2); // in chars
 				var magic3 = reader.ReadByte();
 				if (magic3 > 0)
 				{
@@ -1095,31 +1096,33 @@ public sealed class Table : IDisposable
 					bool rasterHasM = false;
 					if (magic3 == 5) rasterHasZ = true;
 					if (magic3 == 7) rasterHasM = rasterHasZ = true;
-					var xOrig = reader.ReadDouble();
-					var yOrig = reader.ReadDouble();
-					var xyScale = reader.ReadDouble();
+					rasterDef.XOrigin = reader.ReadDouble();
+					rasterDef.YOrigin = reader.ReadDouble();
+					rasterDef.XYScale = reader.ReadDouble();
 					if (rasterHasM)
 					{
-						var mOrig = reader.ReadDouble();
-						var mScale = reader.ReadDouble();
+						rasterDef.MOrigin = reader.ReadDouble();
+						rasterDef.MScale = reader.ReadDouble();
 					}
 					if (rasterHasZ)
 					{
-						var zOrig = reader.ReadDouble();
-						var zScale = reader.ReadDouble();
+						rasterDef.ZOrigin = reader.ReadDouble();
+						rasterDef.ZScale = reader.ReadDouble();
 					}
-					var xyTolerance = reader.ReadDouble();
+					rasterDef.XYTolerance = reader.ReadDouble();
 					if (rasterHasM)
 					{
-						var mTolerance = reader.ReadDouble();
+						rasterDef.MTolerance = reader.ReadDouble();
 					}
 					if (rasterHasZ)
 					{
-						var zTolerance = reader.ReadDouble();
+						rasterDef.ZTolerance = reader.ReadDouble();
 					}
 				}
-				field.RasterType = reader.ReadByte();
+				rasterDef.RasterType = reader.ReadByte();
 				// 0 = external raster, 1 = managed raster, 2 = inline binary raster
+
+				field.RasterDef = rasterDef;
 				break;
 
 			default:

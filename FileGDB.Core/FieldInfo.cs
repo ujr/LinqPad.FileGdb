@@ -15,7 +15,7 @@ public class FieldInfo
 	// Domain? DomainFixed? (seem not stored in FGDB)
 	public object? DefaultValue { get; set; }
 	public GeometryDef? GeometryDef { get; set; }
-	public int? RasterType { get; set; } // TODO eventually "RasterDef" à la GeometryDef
+	public RasterDef? RasterDef { get; set; }
 	public int Size { get; set; } // TODO EXPERIMENTAL
 	public int Flags { get; set; } // TODO EXPERIMENTAL
 
