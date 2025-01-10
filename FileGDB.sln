@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.5.33530.505
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FileGDB.LinqPadDriver", "LinqPadDriver\FileGDB.LinqPadDriver.csproj", "{A331AC05-BAB7-420E-8C04-696DDA011048}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FileGDB.LinqPadDriver", "FileGDB.LinqPadDriver\FileGDB.LinqPadDriver.csproj", "{A331AC05-BAB7-420E-8C04-696DDA011048}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FileGDB.Core", "FileGDB.Core\FileGDB.Core.csproj", "{FC481AB9-1B11-4EB9-BBF2-F2560D532750}"
 EndProject
