@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-//using System.IO.Compression;
+using System.IO.Compression;
 using System.Linq;
 using Xunit;
 using Xunit.Abstractions;
@@ -11,7 +11,7 @@ namespace FileGDB.Core.Test;
 public class GeometryBlobTest : IDisposable
 {
 	private readonly ITestOutputHelper _output;
-	//private readonly string _myTempPath;
+	private readonly string _myTempPath;
 
 	private const double NoZ = ShapeBuffer.DefaultZ;
 	private const double NoM = ShapeBuffer.DefaultM;
@@ -21,20 +21,19 @@ public class GeometryBlobTest : IDisposable
 	{
 		_output = output ?? throw new ArgumentNullException(nameof(output));
 
-		// TODO Once tests and data are assembled, zip the FGDB to data/GeomTest.gdb.zip and unzip on-the-fly
-		//var zipArchivePath = TestUtils.GetTestDataPath("GeomTest.gdb.zip");
-		//Assert.True(File.Exists(zipArchivePath));
+		var zipArchivePath = TestUtils.GetTestDataPath("TestGeom.gdb.zip");
+		Assert.True(File.Exists(zipArchivePath));
 
-		//_myTempPath = TestUtils.CreateTempFolder();
+		_myTempPath = TestUtils.CreateTempFolder();
 
-		//ZipFile.ExtractToDirectory(zipArchivePath, _myTempPath);
+		ZipFile.ExtractToDirectory(zipArchivePath, _myTempPath);
 	}
 
 	public void Dispose()
 	{
 		// remove test data from temp folder
-		//const bool recursive = true;
-		//Directory.Delete(_myTempPath, recursive);
+		const bool recursive = true;
+		Directory.Delete(_myTempPath, recursive);
 	}
 
 	[Fact]
@@ -387,8 +386,8 @@ public class GeometryBlobTest : IDisposable
 
 	private string GetTempDataPath(string fileName)
 	{
-		// TODO return Path.Combine(_myTempPath, fileName);
-		return Path.Combine("C:\\Temp", fileName);
+		return Path.Combine(_myTempPath, fileName);
+		//return Path.Combine("C:\\Temp", fileName);
 	}
 
 	private static byte[] ReadTestDataBytes(string fileName, string? folder = null)

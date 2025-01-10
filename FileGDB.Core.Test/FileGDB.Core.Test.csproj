@@ -71,6 +71,9 @@
     <None Include="..\data\Test1.gdb.zip" Link="TestData\Test1.gdb.zip">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="..\data\TestGeom.gdb.zip" Link="TestData\TestGeom.gdb.zip">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
     <None Include="..\data\TestPro32.gdb.zip" Link="TestData\TestPro32.gdb.zip">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
