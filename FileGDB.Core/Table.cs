@@ -38,6 +38,9 @@ public sealed class Table : IDisposable
 	private int _dataHeaderUnknown4;
 	private IReadOnlyList<IndexInfo>? _indexes;
 
+	/// <summary>The File GDB epoch for date values: 1899-12-30 00:00:00</summary>
+	private static readonly DateTime Epoch = new(1899, 12, 30, 0, 0, 0);
+
 	/// <summary>The base name of the files for this table, always
 	/// of the form aXXXXXXXX where XXXXXXXX is the zero-padded
 	/// hexadecimal number of the table.</summary>
@@ -328,7 +331,7 @@ public sealed class Table : IDisposable
 					break;
 				case FieldType.String:
 				case FieldType.XML:
-					values[i] = ReadTextField(_dataReader, _useUtf8);
+					values[i] = ReadTextValue(_dataReader, _useUtf8);
 					break;
 				case FieldType.DateTime:
 					values[i] = ReadDateTimeValue(_dataReader);
@@ -342,14 +345,14 @@ public sealed class Table : IDisposable
 					values[i] = ReadGeometryBlob(_dataReader, geometryDef);
 					break;
 				case FieldType.Blob:
-					values[i] = ReadBlobField(_dataReader);
+					values[i] = ReadBlobValue(_dataReader);
 					break;
 				case FieldType.Raster:
 					// depends on RasterType in field definition
 					throw new NotImplementedException("Raster fields not yet implemented");
 				case FieldType.GUID:
 				case FieldType.GlobalID:
-					values[i] = ReadGuidField(_dataReader);
+					values[i] = ReadGuidValue(_dataReader);
 					break;
 				case FieldType.Int64:
 					values[i] = _dataReader.ReadInt64();
@@ -523,7 +526,7 @@ public sealed class Table : IDisposable
 		return new GeometryBlob(geomDef, bytes);
 	}
 
-	private static byte[] ReadBlobField(DataReader reader)
+	private static byte[] ReadBlobValue(DataReader reader)
 	{
 		// assume reader positioned at start of field data
 		var size = reader.ReadVarUInt();
@@ -533,7 +536,7 @@ public sealed class Table : IDisposable
 		return bytes;
 	}
 
-	private static string ReadTextField(DataReader reader, bool isUtf8)
+	private static string ReadTextValue(DataReader reader, bool isUtf8)
 	{
 		// assume reader positioned at start of field data
 		var size = reader.ReadVarUInt();
@@ -546,7 +549,7 @@ public sealed class Table : IDisposable
 		return text;
 	}
 
-	private static Guid ReadGuidField(DataReader reader)
+	private static Guid ReadGuidValue(DataReader reader)
 	{
 		var bytes = reader.ReadBytes(16);
 		// FGDB: b3 b2 b1 b0   b5 b4   b7 b6   b8 b9 b10 b11 b12 b13 b14 b15 b16
@@ -557,21 +560,19 @@ public sealed class Table : IDisposable
 
 	private static DateTime ReadDateTimeValue(DataReader reader)
 	{
-		double days = reader.ReadDouble();
-		var epoch = new DateTime(1899, 12, 30, 0, 0, 0); // 1899-12-30 00:00:00
-		return epoch.AddDays(days);
+		var days = reader.ReadDouble();
+		return Epoch.AddDays(days);
 	}
 
 	private static DateOnly ReadDateOnlyValue(DataReader reader)
 	{
-		double days = reader.ReadDouble();
-		var epoch = new DateTime(1899, 12, 30, 0, 0, 0); // 1899-12-30 00:00:00
-		return DateOnly.FromDateTime(epoch.AddDays(days));
+		var days = reader.ReadDouble();
+		return DateOnly.FromDateTime(Epoch.AddDays(days));
 	}
 
 	private static TimeOnly ReadTimeOnlyValue(DataReader reader)
 	{
-		double fraction = reader.ReadDouble();
+		var fraction = reader.ReadDouble();
 		// 0 = 00:00:00, 1 = 23:59:59.9... clamp to range:
 		if (fraction < 0) fraction = 0;
 		if (fraction > 1) fraction = 1;
@@ -582,10 +583,9 @@ public sealed class Table : IDisposable
 
 	private static DateTimeOffset ReadDateTimeOffsetValue(DataReader reader)
 	{
-		double daysSinceEpoch = reader.ReadDouble();
+		var daysSinceEpoch = reader.ReadDouble();
 		int utcOffsetMinutes = reader.ReadInt16();
-		var epoch = new DateTime(1899, 12, 30, 0, 0, 0); // 1899-12-30 00:00:00
-		var dateTime = epoch.AddDays(daysSinceEpoch);
+		var dateTime = Epoch.AddDays(daysSinceEpoch);
 		Debug.Assert(dateTime.Kind == DateTimeKind.Unspecified);
 		var offset = TimeSpan.FromMinutes(utcOffsetMinutes);
 		return new DateTimeOffset(dateTime, offset);

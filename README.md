@@ -47,6 +47,69 @@ Size and name limits (from Esri's ArcGIS Pro documentation at
 - Field name length: 64 characters
 - Text field width: 2,147,483,647 characters
 
+## System Tables
+
+- GDB_SystemCatalog: the catalog: list of all tables
+- GDB_DBTune: config keyword parameters
+- GDB_SpatialRefs: spatial references used by tables in this File GDB
+- GDB_Items: the GDB_Items system table
+- GDB_ItemTypes: the GDB_ItemTypes system table
+- GDB_ItemRelationships: the GDB_ItemRelationships system table
+- GDB_ItemRelationshipTypes: the GDB_ItemRelationshipTypes system table
+- GDB_ReplicaLog: the ReplicaLog system table (may not exist)
+- GDB_ReplicaChanges: replica changes, only exists if this GDB is a replica
+
+Additionally with Pro 3.2
+
+- GDB_EditingTemplates
+- GDB_EditingTemplateRelationships
+
+Version 9.x File GDBs had many more system tables
+
+## Item Types
+
+The system table `GDB_ItemTypes` defines a class hierarchy
+with `Item` at its root.
+
+- Item
+  - Folder
+  - Resource
+    - Dataset
+      - Extension Dataset
+        - Representation Class, Catalog Dataset, Trace
+          Network, Mosaic Dataset, Network Dataset
+          Parcel Dataset, Terrain, Parcel Fabric
+          Utility Network, Location Referencing Dataset
+      - Topology
+      - Diagram Dataset
+      - Tin
+      - Relationship Class
+      - Geometric Network
+      - Domain
+        - Coded Value Domain and Range Domain
+      - Replica Dataset
+      - Feature Dataset
+      - AbstractTable
+        - Table, Feature Class, Raster Dataset, Raster Class
+      - Workspace Extension
+      - Workspace
+      - Sync Dataset
+      - Sync Replica
+      - Toolbox
+      - Historical Marker
+      - Replica
+      - Survey Dataset
+      - Network Diagram
+
+The system table `GDB_RelationshipTypes` defines the
+possible relationships between the item types. Examples:
+
+- DatasetInFeatureDataset (origin: FeatureDataset, dest: Dataset)
+- FeatureClassInTopology (origin: Topology, dest: Feature Class)
+- RepresentationOfFeatureClass (origin: Feature Class, dest: Representation Class)
+- DatasetOfReplicaDataset (origin: Replica Dataset, dest: Dataset)
+- and some 20 more
+
 ## Configuration Keywords
 
 List of keywords and how they affect data storage.

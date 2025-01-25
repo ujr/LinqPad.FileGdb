@@ -19,8 +19,8 @@
 		</DockPanel>
 		<TextBox Padding="2" Text="{Binding FolderPath}" />
 		<CheckBox IsChecked="{Binding DebugMode}"
-				  ToolTip="Call System.Diagnostics.Debugger.Launch() before creating data context, opening a table, and enumerating rows"
-                  Margin="0,6,0,0" VerticalAlignment="Center">Enable Debugger</CheckBox>
+				  ToolTip="Call System.Diagnostics.Debugger.Launch() before creating data context or enumerating rows"
+                  Margin="0,6,0,0">Enable Debugger</CheckBox>
 		<DockPanel LastChildFill="False" Margin="0,3,0,0">
 			<CheckBox IsChecked="{Binding ConnectionInfo.Persist}" VerticalAlignment="Center">Remember this connection</CheckBox>
 			<Button DockPanel.Dock="Right" Content="Cancel" Margin="6,0,0,0" Padding="10,3" MinWidth="60" IsCancel="True" TabIndex="2" />

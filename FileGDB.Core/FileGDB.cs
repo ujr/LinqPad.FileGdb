@@ -11,11 +11,6 @@ public sealed class FileGDB : IDisposable
 	private readonly IList<Table> _openTables;
 	private IReadOnlyList<CatalogEntry>? _catalog;
 
-	static FileGDB()
-	{
-		SystemTableDescriptions = GetSystemTableDescriptions();
-	}
-
 	private FileGDB(string gdbFolderPath)
 	{
 		FolderPath = gdbFolderPath ?? throw new ArgumentNullException(nameof(gdbFolderPath));
@@ -34,8 +29,6 @@ public sealed class FileGDB : IDisposable
 		gdb.LoadCatalog();
 		return gdb;
 	}
-
-	public static IReadOnlyDictionary<string, string> SystemTableDescriptions { get; }
 
 	public void Dispose()
 	{
@@ -146,48 +139,5 @@ public sealed class FileGDB : IDisposable
 		return new FileGDBException(message ?? "File GDB error");
 	}
 
-	private static IReadOnlyDictionary<string, string> GetSystemTableDescriptions()
-	{
-		var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-		{
-			{ "GDB_SystemCatalog", "Catalog system table (list of all tables)" },
-			{ "GDB_DBTune", "DBTune system table (config keyword parameters)" },
-			{ "GDB_SpatialRefs", "Spatial references used by tables in this File GDB" },
-			{ "GDB_Items", "The GDB_Items system table" },
-			{ "GDB_ItemTypes", "The GDB_ItemTypes system table" },
-			{ "GDB_ItemRelationships", "The GDB_ItemRelationships system table" },
-			{ "GDB_ItemRelationshipTypes", "The GDB_ItemRelationshipTypes system table" },
-			{ "GDB_ReplicaLog", "The ReplicaLog system table (may not exist)" },
-			{ "GDB_EditingTemplates", "new with Pro 3.2" },
-			{ "GDB_EditingTemplateRelationships", "new with Pro 3.2" },
-			{ "GDB_ReplicaChanges", "Replica changes, only exists if this GDB is a replica" }
-		};
-
-		// TODO Version 9.2 File GDBs had many more system tables
-
-		return new ReadOnlyDictionary<string, string>(result);
-	}
-
 	#endregion
-
-	public readonly struct CatalogEntry
-	{
-		public int ID { get; }
-		public string Name { get; }
-		public int Format { get; }
-
-		public CatalogEntry(int id, string name, int format = 0)
-		{
-			ID = id;
-			Name = name ?? throw new ArgumentNullException(nameof(name));
-			Format = format;
-		}
-
-		//public bool Missing => ID <= 0 || Name == null;
-
-		public override string ToString()
-		{
-			return $"ID={ID} Name={Name} Format={Format}";
-		}
-	}
 }

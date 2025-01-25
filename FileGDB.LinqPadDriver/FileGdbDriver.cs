@@ -66,21 +66,21 @@ public class FileGdbDriver : DynamicDataContextDriver
 		return dialog.ShowDialog() == true;
 	}
 
-	//public override bool AreRepositoriesEquivalent(IConnectionInfo c1, IConnectionInfo c2)
-	//{
-	//	if (c1 is null)
-	//		throw new ArgumentNullException(nameof(c1));
-	//	if (c2 is null)
-	//		throw new ArgumentNullException(nameof(c2));
+	public override bool AreRepositoriesEquivalent(IConnectionInfo c1, IConnectionInfo c2)
+	{
+		if (c1 is null)
+			throw new ArgumentNullException(nameof(c1));
+		if (c2 is null)
+			throw new ArgumentNullException(nameof(c2));
 
-	//	var folder1 = c1.GetGdbFolderPath();
-	//	var folder2 = c2.GetGdbFolderPath();
-	//	if (folder1 is null && folder2 is null) return true;
-	//	if (folder1 is null || folder2 is null) return false;
-	//	var path1 = Path.GetFullPath(folder1);
-	//	var path2 = Path.GetFullPath(folder2);
-	//	return string.Equals(path1, path2, StringComparison.Ordinal);
-	//}
+		var folder1 = c1.GetGdbFolderPath();
+		var folder2 = c2.GetGdbFolderPath();
+		if (folder1 is null && folder2 is null) return true;
+		if (folder1 is null || folder2 is null) return false;
+		var path1 = Path.GetFullPath(folder1);
+		var path2 = Path.GetFullPath(folder2);
+		return string.Equals(path1, path2, StringComparison.Ordinal);
+	}
 
 	public override ParameterDescriptor[] GetContextConstructorParameters(IConnectionInfo cxInfo)
 	{
@@ -95,6 +95,7 @@ public class FileGdbDriver : DynamicDataContextDriver
 	{
 		if (cxInfo is null)
 			throw new ArgumentNullException(nameof(cxInfo));
+
 		var gdbFolderPath = cxInfo.GetGdbFolderPath();
 		if (gdbFolderPath is null)
 			throw new InvalidOperationException("No GDB folder path in connection info");
@@ -119,6 +120,8 @@ public class FileGdbDriver : DynamicDataContextDriver
 		//Debugger.Launch();
 		yield return typeof(Core.FileGDB).Namespace!;
 	}
+
+	#region Output formatting
 
 	public override void PreprocessObjectToWrite(ref object objectToWrite, ObjectGraphInfo info)
 	{
@@ -191,12 +194,55 @@ public class FileGdbDriver : DynamicDataContextDriver
 				objectToWrite = Util.OnDemand(description, () => curves);
 			}
 		}
+		else if (info.ParentHierarchy.FirstOrDefault() is TableBase)
+		{
+			if (objectToWrite is ICollection<FieldInfo> fieldInfos)
+			{
+				var description = fieldInfos.Count == 1 ? "1 field" : $"{fieldInfos.Count} fields";
+				objectToWrite = Util.OnDemand(description, () => fieldInfos);
+			}
+			else if (objectToWrite is ICollection<IndexInfo> indexInfos)
+			{
+				var description = indexInfos.Count == 1 ? "1 index" : $"{indexInfos.Count} indices";
+				objectToWrite = Util.OnDemand(description, () => indexInfos);
+			}
+			else if (objectToWrite is Table.InternalInfo internals)
+			{
+				objectToWrite = Util.OnDemand("Internals", () => internals);
+			}
+		}
+		else if (info.ParentHierarchy.FirstOrDefault() is Table)
+		{
+			if (objectToWrite is ICollection<FieldInfo> fieldInfos)
+			{
+				var description = fieldInfos.Count == 1 ? "1 field" : $"{fieldInfos.Count} fields";
+				objectToWrite = Util.OnDemand(description, () => fieldInfos);
+			}
+			else if (objectToWrite is ICollection<IndexInfo> indexInfos)
+			{
+				var description = indexInfos.Count == 1 ? "1 index" : $"{indexInfos.Count} indices";
+				objectToWrite = Util.OnDemand(description, () => indexInfos);
+			}
+			else if (objectToWrite is Table.InternalInfo internals)
+			{
+				objectToWrite = Util.OnDemand("Internals", () => internals);
+			}
+		}
 		else if (info.ParentHierarchy.FirstOrDefault() is FieldInfo)
 		{
 			if (objectToWrite is GeometryDef geometryDef)
 			{
 				var description = Utils.GetDisplayName(geometryDef);
 				objectToWrite = Util.OnDemand(description, () => geometryDef);
+			}
+		}
+		else if (info.ParentHierarchy.FirstOrDefault() is TableContainerBase)
+		{
+			if (objectToWrite is TableBase tableBase)
+			{
+				var rows = tableBase.Table.RowCount;
+				var label = rows == 1 ? "1 row" : $"{rows} rows";
+				objectToWrite = Util.OnDemand(label, () => tableBase);
 			}
 		}
 
@@ -236,11 +282,15 @@ public class FileGdbDriver : DynamicDataContextDriver
 		return sb.ToString();
 	}
 
+	#endregion
+
+	#region Schema explorer and typed context generation
+
 	public override List<ExplorerItem> GetSchemaAndBuildAssembly(
 		IConnectionInfo cxInfo, AssemblyName assemblyToBuild,
 		ref string nameSpace, ref string typeName)
 	{
-		bool debugMode = cxInfo.GetDebugMode();
+		var debugMode = cxInfo.GetDebugMode();
 
 		if (debugMode)
 		{
@@ -248,27 +298,25 @@ public class FileGdbDriver : DynamicDataContextDriver
 		}
 
 		var gdbFolderPath = cxInfo.GetGdbFolderPath();
-		var gdb = gdbFolderPath is null ? null : Core.FileGDB.Open(gdbFolderPath);
+		using var gdb = gdbFolderPath is null ? null : Core.FileGDB.Open(gdbFolderPath);
 
-		var folderPathItem = new ExplorerItem("FolderPath", ExplorerItemKind.Property, ExplorerIcon.Parameter)
+		var catalogItem = new ExplorerItem("Catalog", ExplorerItemKind.Schema, ExplorerIcon.Schema)
 		{
-			IsEnumerable = false,
-			DragText = nameof(DriverBase.FolderPath),
-			ToolTipText = gdb?.FolderPath ?? "Full path to the .gdb/ folder"
+			IsEnumerable = true,
+			DragText = nameof(DriverBase.Catalog),
+			ToolTipText = "Catalog (list of tables)"
 		};
 
-		var systemItem = new ExplorerItem("System", ExplorerItemKind.Schema, ExplorerIcon.Schema)
+		var systemItem = new ExplorerItem("System", ExplorerItemKind.Category, ExplorerIcon.Table)
 		{
 			Children = GetSystemTableItems(gdb),
 			ToolTipText = "Geodatabase System Tables"
 		};
 
-		var systemTables = systemItem.Children.Select(item => item.Text).ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-		var tablesItem = new ExplorerItem("Tables", ExplorerItemKind.Schema, ExplorerIcon.Schema)
+		var tablesItem = new ExplorerItem("Tables", ExplorerItemKind.Category, ExplorerIcon.Table)
 		{
-			Children = GetTableItems(gdb, name => !systemTables.Contains(name)),
-			ToolTipText = "User-defined tables (all but system tables)"
+			Children = GetUserTableItems(gdb),
+			ToolTipText = "User-defined tables"
 		};
 
 		var source = MakeContextSourceCode(nameSpace, typeName, gdb);
@@ -278,19 +326,44 @@ public class FileGdbDriver : DynamicDataContextDriver
 
 		var items = new List<ExplorerItem>
 		{
-			folderPathItem,
+			catalogItem,
 			systemItem,
 			tablesItem
 		};
 
 		if (debugMode)
 		{
-			items.Add(new ExplorerItem($"{nameSpace}.{typeName}", ExplorerItemKind.Property, ExplorerIcon.Box)
+			var debugItem = new ExplorerItem("Debug", ExplorerItemKind.Category, ExplorerIcon.Box);
+
+			var children = debugItem.Children = new List<ExplorerItem>();
+
+			children.Add(new ExplorerItem($"{nameSpace}.{typeName}", ExplorerItemKind.Property, ExplorerIcon.Box)
 			{
 				IsEnumerable = false,
 				DragText = source,
 				ToolTipText = "generated source code for data context"
 			});
+
+			children.Add(new ExplorerItem("Debugger.Launch()", ExplorerItemKind.Property, ExplorerIcon.ScalarFunction)
+			{
+				IsEnumerable = false,
+				DragText = "System.Diagnostics.Debugger.Launch()",
+				ToolTipText = "launch and attach a debugger"
+			});
+
+			children.Add(new ExplorerItem("Item Kinds", ExplorerItemKind.Category, ExplorerIcon.Schema)
+			{
+				ToolTipText = "Dummy item for each ExplorerItemKind",
+				Children = GetItemKindItems(debugItem)
+			});
+
+			children.Add(new ExplorerItem("Icons", ExplorerItemKind.Category, ExplorerIcon.Schema)
+			{
+				ToolTipText = "Dummy item for each ExplorerIcon",
+				Children = GetIconItems()
+			});
+
+			items.Add(debugItem);
 		}
 
 		return items;
@@ -338,61 +411,59 @@ public class FileGdbDriver : DynamicDataContextDriver
 		if (string.IsNullOrEmpty(typeName))
 			throw new ArgumentNullException(nameof(typeName));
 
-		const string mainSourceTemplate = @"
-using System;
+		const string mainSourceTemplate = @"using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 
-namespace $$NAMESPACE$$;
+namespace $$Namespace$$;
 
-public class $$TYPENAME$$ : FileGDB.LinqPadDriver.DriverBase
+public class $$TypeName$$ : FileGDB.LinqPadDriver.DriverBase
 {
-  public $$TYPENAME$$(string gdbFolderPath, bool debugMode) : base(gdbFolderPath, debugMode)
+  public $$TypeName$$(string gdbFolderPath, bool debugMode) : base(gdbFolderPath, debugMode)
   {
-    var gdb = GetFileGDB();
-    GDB = new SystemTables(gdb, debugMode);
-    Tables = new UserTables(gdb, debugMode);
+    Tables = new TableContainer(GDB, debugMode);
   }
 
-  public SystemTables GDB { get; }
-  public UserTables Tables { get; }
+  public TableContainer Tables { get; }
 
-  public class SystemTables : FileGDB.LinqPadDriver.TableContainer
+  public class TableContainer : FileGDB.LinqPadDriver.TableContainerBase
   {
-    public SystemTables(FileGDB.Core.FileGDB gdb, bool debugMode) : base(gdb, debugMode) {}
+    public TableContainer(FileGDB.Core.FileGDB gdb, bool debugMode) : base(gdb, debugMode) {}
 
     // public @FooTable @Foo => GetTable<@FooTable>(""Foo"");
-    $$SYSTEMTABLEPROPS$$
+    $$TableProperties$$
   }
 
-  public class UserTables : FileGDB.LinqPadDriver.TableContainer
+  $$PerTableClasses$$
+
+  public override void Dispose()
   {
-    public UserTables(FileGDB.Core.FileGDB gdb, bool debugMode) : base(gdb, debugMode) {}
-
-    // public @FooTable @Foo => GetTable<@FooTable>(""Foo"");
-    $$USERTABLEPROPS$$
+    Tables.Dispose();
   }
-
-  $$PERTABLECLASSES$$
 }
 ";
 
 		const string perTableTemplate = @"
-public class $$TABLENAME$$Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<$$TABLENAME$$Table.Row>
+public class $$TableName$$_Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<$$TableName$$_Table.Row>
 {
+  public $$TableName$$_Table(FileGDB.Core.Table table, bool debugMode)
+    : base(table, debugMode) { }
+
   IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
 
-  public IEnumerator<Row> GetEnumerator()
+  public IEnumerator<Row> GetEnumerator() => Search().GetEnumerator();
+
+  public IEnumerable<Row> Search()
   {
-    var cursor = SearchRows();
+    var cursor = ReadRows();
     var values = (FileGDB.Core.IRowValues) cursor;
 
     while (cursor.Step())
     {
       var row = new Row();
       //row.Bar = (BarType)values.GetValue(""Bar"");
-      $$FIELDPROPERTYINIT$$
+      $$FieldAssignments$$
       yield return row;
     }
   }
@@ -404,29 +475,28 @@ public class $$TABLENAME$$Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<$
 
     var row = new Row();
     //row.Bar = (BarType)values.GetValue(""Bar"");
-    $$FIELDPROPERTYINIT$$
+    $$FieldAssignments$$
     return row;
   }
 
   public class Row : FileGDB.LinqPadDriver.RowBase
   {
     //public BarType Bar { get; set; }
-    $$PERFIELDPROPERTIES$$
+    $$FieldProperties$$
   }
 }
 ";
+
 		if (gdb is null)
 		{
 			return mainSourceTemplate
-				.Replace("$$NAMESPACE$$", nameSpace)
-				.Replace("$$TYPENAME$$", typeName)
-				.Replace("$$SYSTEMTABLEPROPS$$", string.Empty)
-				.Replace("$$USERTABLEPROPS$$", string.Empty)
-				.Replace("$$PERTABLECLASSES$$", string.Empty);
+				.Replace("$$Namespace$$", nameSpace)
+				.Replace("$$TypeName$$", typeName)
+				.Replace("$$TableProperties$$", string.Empty)
+				.Replace("$$PerTableClasses$$", string.Empty);
 		}
 
-		var systemTableProps = new StringBuilder();
-		var userTableProps = new StringBuilder();
+		var tableProps = new StringBuilder();
 		var tableClasses = new StringBuilder();
 
 		foreach (var entry in gdb.Catalog)
@@ -434,22 +504,14 @@ public class $$TABLENAME$$Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<$
 			var tableName = entry.Name;
 			var tableClassName = MakeIdentifier(tableName);
 
-			if (tableName.StartsWith("GDB_", StringComparison.OrdinalIgnoreCase))
-			{
-				systemTableProps.Append($"public @{tableClassName}Table @{tableClassName} => ");
-				systemTableProps.AppendLine($"GetTable<@{tableClassName}Table>(\"{tableClassName}\");");
-			}
-			else
-			{
-				userTableProps.Append($"public @{tableClassName}Table @{tableClassName} => ");
-				userTableProps.AppendLine($"GetTable<@{tableClassName}Table>(\"{tableClassName}\");");
-			}
+			tableProps.Append($"public @{tableClassName}_Table @{tableClassName} => ");
+			tableProps.AppendLine($"GetTable<@{tableClassName}_Table>(\"{tableClassName}\");");
 
 			try
 			{
 				using var table = gdb.OpenTable(tableName);
 
-				var propertyInits = new StringBuilder();
+				var fieldAssignments = new StringBuilder();
 				var fieldProperties = new StringBuilder();
 
 				foreach (var field in table.Fields)
@@ -460,14 +522,14 @@ public class $$TABLENAME$$Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<$
 					var fieldType = Table.GetDataType(field.Type);
 					var fieldTypeName = GetPropertyTypeName(fieldType);
 
-					propertyInits.AppendLine($"row.@{propName} = ({fieldTypeName}) values.GetValue(\"{escaped}\");");
+					fieldAssignments.AppendLine($"row.@{propName} = ({fieldTypeName}) values.GetValue(\"{escaped}\");");
 					fieldProperties.AppendLine($"public {fieldTypeName} @{propName} {{ get; set; }}");
 				}
 
 				var perTableCode = perTableTemplate
-					.Replace("$$TABLENAME$$", tableClassName)
-					.Replace("$$FIELDPROPERTYINIT$$", propertyInits.ToString())
-					.Replace("$$PERFIELDPROPERTIES$$", fieldProperties.ToString());
+					.Replace("$$TableName$$", tableClassName)
+					.Replace("$$FieldAssignments$$", fieldAssignments.ToString())
+					.Replace("$$FieldProperties$$", fieldProperties.ToString());
 				tableClasses.AppendLine(perTableCode);
 			}
 			catch (IOException)
@@ -475,19 +537,18 @@ public class $$TABLENAME$$Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<$
 				// Could not open table: assume it has no fields and generate
 				// code accordingly; the error will pop up again when enumerated
 				var perTableCode = perTableTemplate
-					.Replace("$$TABLENAME$$", tableClassName)
-					.Replace("$$FIELDPROPERTYINIT$$", string.Empty)
-					.Replace("$$PERFIELDPROPERTIES$$", string.Empty);
+					.Replace("$$TableName$$", tableClassName)
+					.Replace("$$FieldAssignments$$", string.Empty)
+					.Replace("$$FieldProperties$$", string.Empty);
 				tableClasses.AppendLine(perTableCode);
 			}
 		}
 
 		var sourceCode = mainSourceTemplate
-			.Replace("$$NAMESPACE$$", nameSpace)
-			.Replace("$$TYPENAME$$", typeName)
-			.Replace("$$SYSTEMTABLEPROPS$$", systemTableProps.ToString())
-			.Replace("$$USERTABLEPROPS$$", userTableProps.ToString())
-			.Replace("$$PERTABLECLASSES$$", tableClasses.ToString());
+			.Replace("$$Namespace$$", nameSpace)
+			.Replace("$$TypeName$$", typeName)
+			.Replace("$$TableProperties$$", tableProps.ToString())
+			.Replace("$$PerTableClasses$$", tableClasses.ToString());
 
 		return sourceCode;
 	}
@@ -597,29 +658,14 @@ public class $$TABLENAME$$Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<$
 			return new List<ExplorerItem>(0);
 		}
 
-		// Tables whose names begin with "GDB_" (ignoring case) are considered system tables:
-		var systemEntries = gdb.Catalog
-			.Where(e => e.Name.StartsWith("GDB_", StringComparison.OrdinalIgnoreCase))
-			.OrderBy(e => e.ID);
-
-		var list = systemEntries.Select(CreateSystemItem).ToList();
-
-		return list;
+		return gdb.Catalog
+			.Where(entry => entry.IsSystemTable())
+			.OrderBy(entry => entry.ID)
+			.Select(entry => CreateTableItem(gdb, entry, "Tables"))
+			.ToList();
 	}
 
-	private static ExplorerItem CreateSystemItem(Core.FileGDB.CatalogEntry entry)
-	{
-		var description = Core.FileGDB.SystemTableDescriptions.GetValueOrDefault(entry.Name);
-
-		return new ExplorerItem(entry.Name, ExplorerItemKind.QueryableObject, ExplorerIcon.Table)
-		{
-			IsEnumerable = true,
-			DragText = $"GDB.{entry.Name}",
-			ToolTipText = description is null ? $"Table ID {entry.ID}" : $"Table ID {entry.ID}, {description}"
-		};
-	}
-
-	private static List<ExplorerItem> GetTableItems(Core.FileGDB? gdb, Predicate<string> filter)
+	private static List<ExplorerItem> GetUserTableItems(Core.FileGDB? gdb)
 	{
 		if (gdb is null)
 		{
@@ -627,39 +673,35 @@ public class $$TABLENAME$$Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<$
 		}
 
 		return gdb.Catalog
-			.Where(entry => filter(entry.Name))
-			.Select(entry=> CreateTableItem(gdb, entry.Name))
+			.Where(entry => entry.IsUserTable())
+			.OrderBy(entry => entry.Name.ToLowerInvariant())
+			.Select(entry => CreateTableItem(gdb, entry, "Tables"))
 			.ToList();
 	}
 
-	private static ExplorerItem CreateTableItem(Core.FileGDB gdb, string tableName)
+	private static ExplorerItem CreateTableItem(Core.FileGDB gdb, CatalogEntry entry, string driverProperty)
 	{
 		try
 		{
-			using var table = gdb.OpenTable(tableName);
+			using var table = gdb.OpenTable(entry.ID);
 
-			var itemName = GetTableExplorerName(tableName, table);
+			var itemName = GetTableExplorerName(entry.Name, table);
 
 			return new ExplorerItem(itemName, ExplorerItemKind.QueryableObject, ExplorerIcon.Table)
 			{
 				IsEnumerable = true,
-				//DragText = $"{nameof(FileGdbContext.Table)}[{Utils.FormatString(tableName)}]",
-				DragText = $"Tables.{tableName}",
-				ToolTipText = $"{table.BaseName}, v{table.Version}, #rows {table.RowCount}, max OID {table.MaxObjectID} ",
-				Children = CreateColumnItems(table)
+				DragText = $"{driverProperty}.{entry.Name}",
+				ToolTipText = $"ID {entry.ID} ({table.BaseName}), v{table.Version}, #rows {table.RowCount}, max OID {table.MaxObjectID}",
+				Children = table.Fields.Select(CreateColumnItem).ToList()
 			};
 		}
 		catch (Exception ex)
 		{
-			return new ExplorerItem(tableName, ExplorerItemKind.Category, ExplorerIcon.Table)
+			return new ExplorerItem(entry.Name, ExplorerItemKind.Category, ExplorerIcon.Table)
 			{
-				IsEnumerable = false,
-				DragText = "Error",
-				ToolTipText = $"Error: {ex.Message}",
-				Children = new List<ExplorerItem>
-				{
-					new($"Error: {ex.Message}", ExplorerItemKind.Category, ExplorerIcon.Blank)
-				}
+				IsEnumerable = true,
+				DragText = $"{driverProperty}.{entry.Name}",
+				ToolTipText = $"Error: {ex.Message}"
 			};
 		}
 	}
@@ -689,32 +731,60 @@ public class $$TABLENAME$$Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<$
 		return sb.ToString();
 	}
 
-	private static List<ExplorerItem> CreateColumnItems(Table table)
-	{
-		var list = new List<ExplorerItem>();
-
-		if (table.GeometryType != GeometryType.Null)
-		{
-			var sb = new StringBuilder();
-			sb.Append('(').Append(table.GeometryType);
-			if (table.HasZ) sb.Append(" hasZ");
-			if (table.HasM) sb.Append(" hasM");
-			sb.Append(')');
-			list.Add(new ExplorerItem(sb.ToString(), ExplorerItemKind.Property, ExplorerIcon.Box));
-		}
-
-		list.AddRange(table.Fields.Select(CreateColumnItem));
-
-		return list;
-	}
-
 	private static ExplorerItem CreateColumnItem(FieldInfo field)
 	{
-		return new ExplorerItem($"{field.Name} ({field.Type})", ExplorerItemKind.Property, ExplorerIcon.Column)
+		var icon = field.Type switch
+		{
+			FieldType.ObjectID => ExplorerIcon.Key,
+			FieldType.Geometry => ExplorerIcon.Box,
+			_ => ExplorerIcon.Column
+		};
+
+		return new ExplorerItem($"{field.Name} ({field.Type})", ExplorerItemKind.Property, icon)
 		{
 			ToolTipText = field.Alias ?? field.Name
 		};
 	}
+
+	private static List<ExplorerItem> GetItemKindItems(ExplorerItem sample)
+	{
+		return new List<ExplorerItem>
+			{
+				new("QueryableObject", ExplorerItemKind.QueryableObject, ExplorerIcon.Schema),
+				new("Category", ExplorerItemKind.Category, ExplorerIcon.Schema),
+				new("Schema", ExplorerItemKind.Schema, ExplorerIcon.Schema),
+				new("Parameter", ExplorerItemKind.Parameter, ExplorerIcon.Schema),
+				new("Property", ExplorerItemKind.Property, ExplorerIcon.Schema),
+				new("ReferenceLink", ExplorerItemKind.ReferenceLink, ExplorerIcon.Schema) {HyperlinkTarget = sample},
+				new("CollectionLink", ExplorerItemKind.CollectionLink, ExplorerIcon.Schema) {HyperlinkTarget = sample}
+			};
+	}
+
+	private static List<ExplorerItem> GetIconItems()
+	{
+		return new List<ExplorerItem>
+			{
+				new("Schema", ExplorerItemKind.Category, ExplorerIcon.Schema),
+				new("Table", ExplorerItemKind.Category, ExplorerIcon.Table),
+				new("View", ExplorerItemKind.Category, ExplorerIcon.View),
+				new("Column", ExplorerItemKind.Category, ExplorerIcon.Column),
+				new("Key", ExplorerItemKind.Category, ExplorerIcon.Key),
+				new("StoredProc", ExplorerItemKind.Category, ExplorerIcon.StoredProc),
+				new("ScalarFunction", ExplorerItemKind.Category, ExplorerIcon.ScalarFunction),
+				new("TableFunction", ExplorerItemKind.Category, ExplorerIcon.TableFunction),
+				new("Parameter", ExplorerItemKind.Category, ExplorerIcon.Parameter),
+				new("ManyToOne", ExplorerItemKind.Category, ExplorerIcon.ManyToOne),
+				new("OneToMany", ExplorerItemKind.Category, ExplorerIcon.OneToMany),
+				new("OneToOne", ExplorerItemKind.Category, ExplorerIcon.OneToOne),
+				new("ManyToMany", ExplorerItemKind.Category, ExplorerIcon.ManyToMany),
+				new("Inherited", ExplorerItemKind.Category, ExplorerIcon.Inherited),
+				new("LinkedDatabase", ExplorerItemKind.Category, ExplorerIcon.LinkedDatabase),
+				new("Box", ExplorerItemKind.Category, ExplorerIcon.Box),
+				new("Blank", ExplorerItemKind.Category, ExplorerIcon.Blank)
+			};
+	}
+
+	#endregion
 }
 
 [UsedImplicitly]
@@ -726,36 +796,18 @@ public abstract class RowBase
 [UsedImplicitly]
 public abstract class TableBase
 {
-	private Table? _table;
+	private readonly Table? _table;
+	private readonly bool _debugMode;
 	private RowResult? _rowResult;
-	private bool _debugMode;
 
-	public TableBase SetTable(Table table, bool debugMode)
+	protected TableBase(Table table, bool debugMode)
 	{
 		_table = table ?? throw new ArgumentNullException(nameof(table));
 		_debugMode = debugMode;
-		return this;
 	}
 
-	[PublicAPI] public string DataFilePath => Table.GetDataFilePath();
-	[PublicAPI] public string IndexFilePath => Table.GetIndexFilePath();
-	[PublicAPI] public int Version => Table.Version;
-	[PublicAPI] public long MaxObjectID => Table.MaxObjectID;
-	[PublicAPI] public long RowCount => Table.RowCount;
-	[PublicAPI] public GeometryType GeometryType => Table.GeometryType;
-	[PublicAPI] public bool HasZ => Table.HasZ;
-	[PublicAPI] public bool HasM => Table.HasM;
-//	[PublicAPI] public bool UseUtf8 => Table.UseUtf8;
-//	[PublicAPI] public int MaxEntrySize => Table.MaxEntrySize;
-//	[PublicAPI] public int OffsetSize => Table.OffsetSize;
-//	[PublicAPI] public long DataFileSize => Table.FileSizeBytes;
-//	[PublicAPI] public int FieldCount => Table.FieldCount;
-	[PublicAPI] public IReadOnlyList<FieldInfo> Fields => Table.Fields;
-	[PublicAPI] public IReadOnlyList<IndexInfo> Indexes => Table.Indexes;
-	[PublicAPI] public Table.InternalInfo Internals => Table.Internals;
-
 	[PublicAPI]
-	protected RowsResult SearchRows()
+	protected RowsResult ReadRows()
 	{
 		if (_debugMode)
 		{
@@ -782,73 +834,99 @@ public abstract class TableBase
 		return _rowResult;
 	}
 
+	[PublicAPI] // just a convenient abbreviation
+	public IReadOnlyList<FieldInfo> Fields => Table.Fields;
+
 	[PublicAPI]
 	public Table Table =>
 		_table ?? throw new InvalidOperationException("This table wrapper has not been initialized");
 }
 
-[UsedImplicitly]
-public abstract class TableContainer
+public abstract class TableContainerBase : IDisposable
 {
 	private readonly Core.FileGDB _gdb;
 	private readonly bool _debugMode;
-	private readonly IDictionary<string, TableBase> _cache;
+	private readonly IDictionary<string, Table> _tableCache;
 
-	protected TableContainer(Core.FileGDB gdb, bool debugMode)
+	protected TableContainerBase(Core.FileGDB gdb, bool debugMode)
 	{
 		_gdb = gdb ?? throw new ArgumentNullException(nameof(gdb));
 		_debugMode = debugMode;
-		_cache = new Dictionary<string, TableBase>();
+		_tableCache = new Dictionary<string, Table>();
 	}
 
 	[PublicAPI]
-	protected T GetTable<T>(string tableName) where T : TableBase, new()
+	protected T GetTable<T>(string tableName) where T : TableBase
 	{
-		if (!_cache.TryGetValue(tableName, out var table))
+		var table = GetRawTable(tableName);
+		var args = new object[] { table, _debugMode };
+		var wrapper = (T?) Activator.CreateInstance(typeof(T), args, null);
+		return wrapper ?? throw new Exception("Got null from Activator");
+	}
+
+	private Table GetRawTable(string tableName)
+	{
+		if (! _tableCache.TryGetValue(tableName, out var table))
 		{
-			var inner = _gdb.OpenTable(tableName);
-			table = new T().SetTable(inner, _debugMode);
-			_cache.Add(tableName, table);
+			table = _gdb.OpenTable(tableName);
+			_tableCache.Add(tableName, table);
 		}
-		return (T)table;
+
+		return table;
+	}
+
+	public void Dispose()
+	{
+		List<Table> list;
+
+		lock (_tableCache)
+		{
+			list = _tableCache.Values.ToList();
+			_tableCache.Clear();
+		}
+
+		foreach (var table in list)
+		{
+			table.Dispose();
+		}
+
+		GC.SuppressFinalize(this);
 	}
 }
 
 [PublicAPI]
-public abstract class DriverBase
+public abstract class DriverBase : IDisposable
 {
-	private readonly Core.FileGDB _gdb;
 	private readonly bool _debugMode;
 
 	protected DriverBase(string gdbFolderPath, bool debugMode)
 	{
 		if (string.IsNullOrEmpty(gdbFolderPath))
 			throw new ArgumentNullException(nameof(gdbFolderPath));
-		_gdb = Core.FileGDB.Open(gdbFolderPath);
+		GDB = Core.FileGDB.Open(gdbFolderPath);
 		_debugMode = debugMode;
 	}
 
-	protected Core.FileGDB GetFileGDB() => _gdb;
+	public Core.FileGDB GDB { get; }
 
-	public string FolderPath => _gdb.FolderPath;
-	//public IEnumerable<string> TableNames => _gdb.TableNames;
-	public IEnumerable<Core.FileGDB.CatalogEntry> Catalog => _gdb.Catalog;
+	public string FolderPath => GDB.FolderPath;
+
+	public IEnumerable<CatalogEntry> Catalog => GDB.Catalog;
 
 	public Table OpenTable(int id)
 	{
-		if (_debugMode)
-		{
-			Debugger.Launch();
-		}
-		return _gdb.OpenTable(id);
+		return GDB.OpenTable(id);
 	}
 
 	public Table OpenTable(string name)
 	{
-		if (_debugMode)
-		{
-			Debugger.Launch();
-		}
-		return _gdb.OpenTable(name);
+		return GDB.OpenTable(name);
 	}
+
+	public static bool LaunchDebugger()
+	{
+		return Debugger.Launch();
+	}
+
+	public abstract void Dispose();
 }
