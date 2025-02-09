@@ -1081,6 +1081,8 @@ public sealed class Table : IDisposable
 	{
 		var fileName = Path.ChangeExtension(BaseName, ".gdbindexes");
 		var filePath = Path.Combine(FolderPath, fileName);
+		// empirical: .gdbindexes may not exist (at least not for system tables)
+		if (!File.Exists(filePath)) return Array.Empty<IndexInfo>();
 		using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
 		using var reader = new DataReader(stream);
 
@@ -1109,7 +1111,16 @@ public sealed class Table : IDisposable
 
 			_ = magic1 + magic2 + magic3 + magic4 + magic5; // silence the unused var warning
 
-			indexes.Add(new IndexInfo(indexName, fieldName));
+			int fieldIndex = FindField(fieldName);
+			var fieldInfo = fieldIndex < 0 ? null : Fields[fieldIndex];
+			var indexType = fieldInfo is null
+				? IndexType.AttributeIndex // an expression like "LOWER(Name)"
+				: fieldInfo.Type == FieldType.ObjectID
+					? IndexType.PrimaryIndex
+					: fieldInfo.Type == FieldType.Geometry
+						? IndexType.SpatialIndex
+						: IndexType.AttributeIndex;
+			indexes.Add(new IndexInfo(indexName, fieldName, indexType, BaseName));
 		}
 
 		return indexes;

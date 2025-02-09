@@ -129,7 +129,7 @@ public sealed class FileGDB : IDisposable
 		}
 	}
 
-	private static string GetTableBaseName(int tableID)
+	private static string GetTableBaseName(int tableID) // TODO public?
 	{
 		return string.Format("a{0:x8}", tableID);
 	}
