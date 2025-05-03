@@ -245,6 +245,9 @@ public class BoxShape : Shape
 									double.IsNaN(YMin) || double.IsNaN(YMax) ||
 									XMin > XMax || YMin > YMax;
 
+	public double Width => Math.Abs(XMax - XMin);
+	public double Height => Math.Abs(YMax - YMin);
+
 	protected override void ToWKT(WKTWriter wkt)
 	{
 		wkt.WriteBox(XMin, YMin, XMax, YMax, ZMin, ZMax, MMin, MMax);
@@ -290,9 +293,9 @@ public class PointShape : Shape
 {
 	public double X { get; }
 	public double Y { get; }
-	public double Z { get; } // NaN if not HasZ
-	public double M { get; } // NaN if not HasM
-	public int ID { get; } // zero if not HasID
+	public double Z { get; }
+	public double M { get; }
+	public int ID { get; }
 
 	public static PointShape Empty { get; } = new(double.NaN, double.NaN);
 
@@ -386,6 +389,16 @@ public abstract class PointListShape : Shape
 		_ids = HasID ? ids ?? throw new ArgumentNullException(nameof(ids)) : null;
 	}
 
+	protected PointListShape(uint shapeType, IReadOnlyList<PointShape>? points)
+		: base(shapeType)
+	{
+		points ??= Array.Empty<PointShape>();
+		_xys = points.Select(p => new XY(p.X, p.Y)).ToArray();
+		_zs = HasZ ? points.Select(p => p.Z).ToArray() : null;
+		_ms = HasM ? points.Select(p => p.M).ToArray() : null;
+		_ids = HasID ? points.Select(p => p.ID).ToArray() : null;
+	}
+
 	public override bool IsEmpty => _xys.Count <= 0 || _xys.All(xy => double.IsNaN(xy.X) || double.IsNaN(xy.Y));
 
 	public int NumPoints => _xys.Count;
@@ -454,17 +467,9 @@ public class MultipointShape : PointListShape
 		: base(GetShapeType(GeometryType.Multipoint, flags), xys, zs, ms, ids)
 	{ }
 
-	public MultipointShape(XY[] xys, double[]? zs = null, double[]? ms = null, int[]? ids = null)
-		: this(GuessFlags(zs, ms, ids), xys, zs, ms, ids) { }
-
-	private static ShapeFlags GuessFlags(double[]? zs, double[]? ms, int[]? ids)
-	{
-		var flags = ShapeFlags.None;
-		if (zs is not null) flags |= ShapeFlags.HasZ;
-		if (ms is not null) flags |= ShapeFlags.HasM;
-		if (ids is not null) flags |= ShapeFlags.HasID;
-		return flags;
-	}
+	public MultipointShape(ShapeFlags flags, IReadOnlyList<PointShape> points)
+		: base(GetShapeType(GeometryType.Multipoint, flags), points)
+	{ }
 
 	protected override void ToWKT(WKTWriter wkt)
 	{
@@ -595,13 +600,49 @@ public abstract class MultipartShape : PointListShape
 		return starts;
 	}
 
+	protected internal List<int> GetPartCounts(List<int>? result = null)
+	{
+		result ??= new List<int>(_partStarts?.Count ?? 1);
+		return GetPartCounts(result, _partStarts, NumPoints);
+	}
+
+	private static List<int> GetPartCounts(List<int> result, IReadOnlyList<int>? partStarts, int numPoints)
+	{
+		result.Clear();
+
+		if (partStarts is null || partStarts.Count < 1)
+		{
+			result.Add(numPoints);
+			return result;
+		}
+
+		//var numParts = partStarts.Count;
+		//var result = new int[numParts];
+
+		int i = partStarts[0]; // always 0
+		int n = partStarts.Count;
+
+		for (int j = 1; j < n; j++)
+		{
+			int k = partStarts[j];
+			//result[j - 1] = k - i;
+			result.Add(k - i);
+			i = k;
+		}
+
+		//result[n - 1] = numPoints - i;
+		result.Add(numPoints - i);
+
+		return result;
+	}
+
 	public int NumParts => _partStarts?.Count ?? 1;
 
 	public int NumCurves => _curves?.Count ?? 0;
 
 	/// <returns>Index into coordinate lists where part <paramref name="partIndex"/> starts</returns>
 	/// <remarks>Returns 0 or NumPoints if <paramref name="partIndex"/> is out of range </remarks>
-	private int GetPartStart(int partIndex)
+	public int GetPartStart(int partIndex)
 	{
 		if (partIndex <= 0) return 0;
 		if (_partStarts is null) return NumPoints;
@@ -945,6 +986,13 @@ public abstract class SegmentModifier
 		SegmentIndex = segmentIndex;
 	}
 
+	public virtual double GetLength(XY startPoint, XY endPoint)
+	{
+		var dx = startPoint.X - endPoint.X;
+		var dy = startPoint.Y - endPoint.Y;
+		return Math.Sqrt(dx * dx + dy * dy);
+	}
+
 	public abstract int GetShapeBufferSize();
 
 	public int WriteShapeBuffer(byte[] bytes, int offset)
@@ -979,6 +1027,114 @@ public class CircularArcModifier : SegmentModifier
 		return 4 + 4 + 8 + 8 + 4; // index, type, 2 doubles, flags
 	}
 
+	public bool IsEmpty => (Flags & 1) != 0; // bit 0, the arc is undefined
+	public bool IsCCW => (Flags & 8) != 0; // bit 3, the arc is in ccw direction
+	public bool IsMinor => (Flags & 16) != 0; // bit 4, central angle <= pi
+	public bool IsLine => (Flags & 32) != 0; // bit 5, only SP and EP are defined (infinite radius)
+	public bool IsPoint => (Flags & 64) != 0; // bit 6, CP, SP, EP are identical; angles are stored instead of CP
+	public bool DefinedIP => (Flags & 128) != 0; // bit 7, interior point; ...
+	// arcs persisted with 9.2 persist endpoints + one interior point, rather than
+	// endpoints and center point so that the arc shape can be recovered after
+	// projecting to another spatial reference and back again; point arcs still
+	// replace the center point with SA and CA
+
+	public override double GetLength(XY startXY, XY endXY)
+	{
+		if (IsEmpty)
+		{
+			return 0.0;
+		}
+
+		bool isPoint = IsPoint;
+		bool isLine = IsLine;
+
+		if (isPoint && startXY != endXY)
+		{
+			isPoint = false;
+			isLine = true;
+		}
+		if (isLine && startXY == endXY)
+		{
+			isPoint = true;
+			isLine = false;
+		}
+
+		if (isPoint)
+		{
+			// startAngle, centralAngle, endAngle = D1, D2, D1+D2
+			// centerXY, radius = startXY, 0.0 (or 2pi?)
+			// isMinor = Math.Abs(centralAngle) <= Math.PI
+			return 0.0; // TODO unsure
+		}
+
+		if (isLine)
+		{
+			var dx = startXY.X - endXY.X;
+			var dy = startXY.Y - endXY.Y;
+			return Math.Sqrt(dx * dx + dy * dy);
+		}
+
+		XY centerXY;
+		double radius;
+		double centralAngle;
+		bool wantCW = !IsCCW;
+
+		if (DefinedIP)
+		{
+			if (isLine)
+			{
+				// startAngle = centralAngle = endAngle = 0.0
+				// centerXY, radius = 0.5*(startXY+endXY), 1.0 (?)
+				// isMinor = true
+				centralAngle = 0.0;
+				radius = 1.0; // unsure
+			}
+			else
+			{
+				var interiorXY = new XY(D1, D2);
+				radius = GetCircleFromInteriorPoint(startXY, interiorXY, endXY, out centerXY);
+				centralAngle = CentralAngle(startXY, centerXY, endXY, wantCW);
+			}
+		}
+		else
+		{
+			centerXY = new XY(D1, D2);
+			radius = GetRadius(startXY, centerXY, endXY);
+			centralAngle = CentralAngle(startXY, centerXY, endXY, wantCW);
+		}
+
+		return Math.Abs(radius * centralAngle);
+	}
+
+	private static double GetRadius(XY start, XY center, XY end)
+	{
+		var r1 = (start - center).Magnitude;
+		var r2 = (end - center).Magnitude;
+		return (r1 + r2) / 2.0; // average
+	}
+
+	private static double GetCircleFromInteriorPoint(XY startXY, XY interiorXY, XY endXY, out XY centerXY)
+	{
+		if (startXY == endXY)
+		{
+			centerXY = 0.5 * (startXY + interiorXY);
+			return GetRadius(startXY, centerXY, endXY);
+		}
+
+		return Geometry.Circumcircle(startXY, interiorXY, endXY, out centerXY);
+	}
+
+	private static double CentralAngle(XY start, XY center, XY end, bool wantCW)
+	{
+		if (start == end)
+		{
+			// special case: assume full circle (not empty)
+			return wantCW ? -2.0 * Math.PI : 2.0 * Math.PI;
+		}
+
+		return Geometry.CentralAngle(start, center, end, wantCW);
+	}
+
 	protected override int WriteShapeBufferCore(byte[] bytes, int offset)
 	{
 		ShapeBuffer.WriteDouble(D1, bytes, offset + 0);
@@ -1008,6 +1164,13 @@ public class CubicBezierModifier : SegmentModifier
 	public override int GetShapeBufferSize()
 	{
 		return 4 + 4 + 4 * 8; // index, type, 4 doubles
+	}
+
+	public override double GetLength(XY startPoint, XY endPoint)
+	{
+		var p1 = new XY(ControlPoint1X, ControlPoint1Y);
+		var p2 = new XY(ControlPoint2X, ControlPoint2Y);
+		return CubicBezier.Length(startPoint, p1, p2, endPoint);
 	}
 
 	protected override int WriteShapeBufferCore(byte[] bytes, int offset)
@@ -1044,6 +1207,11 @@ public class EllipticArcModifier : SegmentModifier
 	public override int GetShapeBufferSize()
 	{
 		return 4 + 4 + 5 * 8 + 4; // index, type, 5 doubles, flags
+	}
+
+	public override double GetLength(XY startPoint, XY endPoint)
+	{
+		throw new NotImplementedException();
 	}
 
 	protected override int WriteShapeBufferCore(byte[] bytes, int offset)

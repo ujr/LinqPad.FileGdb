@@ -12,7 +12,6 @@ public enum IndexType
 public class IndexInfo
 {
 	public string Name { get; }
-	//public string FileName { get; } // aXXXXXXXX.Name.atx/.spx
 	public string FieldName { get; } // or Expression? e.g. "LOWER(Name)"
 	public IndexType IndexType { get; }
 	private string BaseName { get; }
@@ -28,7 +27,7 @@ public class IndexInfo
 		BaseName = baseName ?? throw new ArgumentNullException(nameof(baseName));
 	}
 
-	public string FileName => GetFileName();
+	public string FileName => GetFileName(); // aXXXXXXXX.Name.atx/.spx
 
 	private string GetFileName()
 	{
