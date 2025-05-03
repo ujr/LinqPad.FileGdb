@@ -8,18 +8,6 @@ using System.Text;
 
 namespace FileGDB.Core;
 
-public readonly struct XY
-{
-	public readonly double X;
-	public readonly double Y;
-
-	public XY(double x, double y)
-	{
-		X = x;
-		Y = y;
-	}
-}
-
 [Flags]
 public enum ShapeFlags
 {
