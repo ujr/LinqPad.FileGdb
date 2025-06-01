@@ -1170,7 +1170,7 @@ public class CubicBezierModifier : SegmentModifier
 	{
 		var p1 = new XY(ControlPoint1X, ControlPoint1Y);
 		var p2 = new XY(ControlPoint2X, ControlPoint2Y);
-		return CubicBezier.Length(startPoint, p1, p2, endPoint);
+		return CubicBezier.ArcLength(startPoint, p1, p2, endPoint);
 	}
 
 	protected override int WriteShapeBufferCore(byte[] bytes, int offset)

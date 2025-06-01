@@ -52,7 +52,108 @@ public class CubicBezierTest
 	}
 
 	[Fact]
-	public void CanBezierArcLength()
+	public void CanDerivative()
+	{
+		var p0 = new XY(0, 0);  //  1-----2
+		var p1 = new XY(0, 1);  //  |     |
+		var p2 = new XY(1, 1);  //  |     |
+		var p3 = new XY(1, 0);  //  0     3
+
+		var d = CubicBezier.Derivative(p0, p1, p2, p3, 0.0);
+		Assert.Equal(new XY(0, 3), d);
+
+		d = CubicBezier.Derivative(p0, p1, p2, p3, 0.5);
+		Assert.Equal(new XY(1.5, 0), d);
+
+		d = CubicBezier.Derivative(p0, p1, p2, p3, 1.0);
+		Assert.Equal(new XY(0, -3), d);
+
+		d = CubicBezier.Derivative(p1, p1, p3, p3, 0.5);
+		Assert.Equal(new XY(1.5, -1.5), d);
+	}
+
+	[Fact]
+	public void CanTangent()
+	{
+		var p0 = new XY(0, 0);  //  1-----2
+		var p1 = new XY(0, 1);  //  |     |
+		var p2 = new XY(1, 1);  //  |     |
+		var p3 = new XY(1, 0);  //  0     3
+
+		var comparer = new XYComparer(1E-9);
+
+		var d = CubicBezier.Tangent(p0, p1, p2, p3, 0.0);
+		Assert.Equal(new XY(0, 1), d);
+
+		d = CubicBezier.Tangent(p0, p1, p2, p3, 0.5);
+		Assert.Equal(new XY(1, 0), d);
+
+		d = CubicBezier.Tangent(p0, p1, p2, p3, 1.0);
+		Assert.Equal(new XY(0, -1), d);
+
+		d = CubicBezier.Tangent(p1, p1, p3, p3, 0.5);
+		var sqrt2 = Math.Sqrt(2);
+		Assert.Equal(new XY(sqrt2 / 2, -sqrt2 / 2), d, comparer);
+	}
+
+	[Fact]
+	public void CanNormal()
+	{
+		var p0 = new XY(0, 0);  //  1-----2
+		var p1 = new XY(0, 1);  //  |     |
+		var p2 = new XY(1, 1);  //  |     |
+		var p3 = new XY(1, 0);  //  0     3
+
+		var comparer = new XYComparer(1E-9);
+
+		var d = CubicBezier.Normal(p0, p1, p2, p3, 0.0);
+		Assert.Equal(new XY(-1, 0), d);
+
+		d = CubicBezier.Normal(p0, p1, p2, p3, 0.5);
+		Assert.Equal(new XY(0, 1), d);
+
+		d = CubicBezier.Normal(p0, p1, p2, p3, 1.0);
+		Assert.Equal(new XY(1, 0), d);
+
+		d = CubicBezier.Normal(p1, p1, p3, p3, 0.5);
+		var sqrt2 = Math.Sqrt(2);
+		Assert.Equal(new XY(sqrt2 / 2, sqrt2 / 2), d, comparer);
+	}
+
+	[Fact]
+	public void CanCentroid()
+	{
+		var p0 = new XY(0, 0);
+		var p1 = new XY(1, 2);
+		var p2 = new XY(3, 3);
+		var p3 = new XY(4, 0);
+
+		var c = CubicBezier.Centroid(p0, p1, p2, p3);
+		Assert.Equal(new XY(2.0, 1.25), c);
+
+		c = CubicBezier.Centroid(p0, p0, p2, p2);
+		Assert.Equal(new XY(1.5, 1.5), c);
+
+		c = CubicBezier.Centroid(new XY(0, 0), new XY(8, 0), new XY(9, 0), new XY(10, 0));
+		Assert.Equal(new XY(6.75, 0), c); // NOT (5,0) because points are "denser" towards p3
+	}
+
+	[Fact]
+	public void CanBoundingBox()
+	{
+		var p0 = new XY(0, 0);
+		var p1 = new XY(0, 1);
+		var p2 = new XY(1, 1);
+		var p3 = new XY(1, 0);
+		var box = CubicBezier.BoundingBox(p0, p1, p2, p3);
+		Assert.Equal(0.0, box.XMin);
+		Assert.Equal(0.0, box.YMin);
+		Assert.Equal(1.0, box.XMax);
+		Assert.Equal(0.75, box.YMax);
+	}
+
+	[Fact]
+	public void CanArcLength()
 	{
 		// values: https://pomax.github.io/bezierinfo/#arclengthapprox
 		var p0 = new XY(110, 150);
@@ -61,31 +162,17 @@ public class CubicBezierTest
 		var p3 = new XY(210, 30);
 
 		// using Jens Gravesen's approach (recursive subdivision):
-		Assert.Equal(272.87002978, CubicBezier.Length(p0, p1, p2, p3), precision: 8);
+		Assert.Equal(272.87002978, CubicBezier.ArcLength(p0, p1, p2, p3), precision: 8);
 
 		// the simpler iterative subdivision (requires a step count):
 		const int precision = 2; // decimal places
-		Assert.Equal(156.20, CubicBezier.Length(p0, p1, p2, p3, 0), precision);
-		Assert.Equal(156.20, CubicBezier.Length(p0, p1, p2, p3, 1), precision);
-		Assert.Equal(219.16, CubicBezier.Length(p0, p1, p2, p3, 2), precision);
-		Assert.Equal(262.70, CubicBezier.Length(p0, p1, p2, p3, 4), precision);
-		Assert.Equal(270.26, CubicBezier.Length(p0, p1, p2, p3, 8), precision);
-		Assert.Equal(271.72, CubicBezier.Length(p0, p1, p2, p3, 12), precision);
-		Assert.Equal(272.70, CubicBezier.Length(p0, p1, p2, p3, 31), precision);
-	}
-
-	[Fact]
-	public void CanGetExtent()
-	{
-		var p0 = new XY(0, 0);
-		var p1 = new XY(0, 1);
-		var p2 = new XY(1, 1);
-		var p3 = new XY(1, 0);
-		var box = CubicBezier.GetExtent(p0, p1, p2, p3);
-		Assert.Equal(0.0, box.XMin);
-		Assert.Equal(0.0, box.YMin);
-		Assert.Equal(1.0, box.XMax);
-		Assert.Equal(0.75, box.YMax);
+		Assert.Equal(156.20, CubicBezier.ArcLength(p0, p1, p2, p3, 0), precision);
+		Assert.Equal(156.20, CubicBezier.ArcLength(p0, p1, p2, p3, 1), precision);
+		Assert.Equal(219.16, CubicBezier.ArcLength(p0, p1, p2, p3, 2), precision);
+		Assert.Equal(262.70, CubicBezier.ArcLength(p0, p1, p2, p3, 4), precision);
+		Assert.Equal(270.26, CubicBezier.ArcLength(p0, p1, p2, p3, 8), precision);
+		Assert.Equal(271.72, CubicBezier.ArcLength(p0, p1, p2, p3, 12), precision);
+		Assert.Equal(272.70, CubicBezier.ArcLength(p0, p1, p2, p3, 31), precision);
 	}
 
 	[Fact]
@@ -96,7 +183,7 @@ public class CubicBezierTest
 		var p2 = new XY(1, 1);
 		var p3 = new XY(1, 0);
 		const double t = 0.5;
-		CubicBezier.Split(p0,p1,p2,p3, t, out XY c11, out XY c12, out XY ps, out XY c21, out XY c22);
+		CubicBezier.Split(p0, p1, p2, p3, t, out XY c11, out XY c12, out XY ps, out XY c21, out XY c22);
 		Assert.Equal(new XY(0.00, 0.50), c11);
 		Assert.Equal(new XY(0.25, 0.75), c12);
 		Assert.Equal(new XY(0.50, 0.75), ps);
@@ -122,7 +209,7 @@ public class CubicBezierTest
 		// Note: splitting at t<0 and t>0 is allowed but the result is undefined
 	}
 
-	[Fact(Skip = "Not yet implemented")]
+	[Fact]
 	public void CanSplit2()
 	{
 		var p0 = new XY(0, 0);
@@ -132,7 +219,30 @@ public class CubicBezierTest
 
 		CubicBezier.Split(p0, p1, p2, p3, 0.25, 0.75, out XY r0, out XY r1, out XY r2, out XY r3);
 
-		throw new NotImplementedException();
+		// normal case: 0 <= t1 < t2 <= t1
+		var start = CubicBezier.Compute(p0, p1, p2, p3, 0.25);
+		var end = CubicBezier.Compute(p0, p1, p2, p3, 0.75);
+		Assert.Equal(start, r0);
+		Assert.Equal(new XY(0.34375, 0.8125), r1);
+		Assert.Equal(new XY(0.65625, 0.8125), r2);
+		Assert.Equal(end, r3);
+
+		// if t1 > t2 the result curve runs "backwards":
+		CubicBezier.Split(p0, p1, p2, p3, 0.75, 0.25, out r0, out r1, out r2, out r3);
+
+		Assert.Equal(r0, end);
+		Assert.Equal(new XY(0.65625, 0.8125), r1);
+		Assert.Equal(new XY(0.34375, 0.8125), r2);
+		Assert.Equal(r3, start);
+
+		// if t1 equals t2 then r0=r1=r2=r3=B(t1)
+		CubicBezier.Split(p0, p1, p2, p3, 0.5, 0.5, out r0, out r1, out r2, out r3);
+
+		var ps = CubicBezier.Compute(p0, p1, p2, p3, 0.5);
+		Assert.Equal(ps, r0);
+		Assert.Equal(ps, r1);
+		Assert.Equal(ps, r2);
+		Assert.Equal(ps, r3);
 	}
 
 	[Fact]
@@ -144,11 +254,11 @@ public class CubicBezierTest
 		var p33 = new XY(3, 3);
 
 		// To begin with: a straight line (requires no recursion):
-		double t = CubicBezier.GetTime(p00, p11, p22, p33, Math.Sqrt(2));
+		double t = CubicBezier.ArcTime(p00, p11, p22, p33, Math.Sqrt(2));
 		Assert.Equal(0.33333333, t, precision: 8);
 
 		// Straight line with uneven speed (still no recursion):
-		t = CubicBezier.GetTime(p00, p00, p33, p33, Math.Sqrt(2) * 3 / 2);
+		t = CubicBezier.ArcTime(p00, p00, p33, p33, Math.Sqrt(2) * 3 / 2);
 		Assert.Equal(0.5, t, precision: 8);
 	}
 
@@ -161,12 +271,12 @@ public class CubicBezierTest
 		var p3 = new XY(1, -3);  //     3
 
 		// Distance 0 is reached at time 0:
-		double t = CubicBezier.GetTime(p0, p1, p2, p3, 0.0);
+		double t = CubicBezier.ArcTime(p0, p1, p2, p3, 0.0);
 		Assert.Equal(0.0, t, precision: 8);
 
 		// Distance Length(p) is reached at time 1:
-		var length = CubicBezier.Length(p0, p1, p2, p3);
-		t = CubicBezier.GetTime(p0, p1, p2, p3, length);
+		var length = CubicBezier.ArcLength(p0, p1, p2, p3);
+		t = CubicBezier.ArcTime(p0, p1, p2, p3, length);
 		Assert.Equal(1.0, t, precision: 8);
 	}
 
@@ -180,17 +290,17 @@ public class CubicBezierTest
 
 		// B(p0,p1,p2,p3;t) has a cusp near (105,75)
 
-		var length = CubicBezier.Length(p0, p1, p2, p3); // 322.63
+		var length = CubicBezier.ArcLength(p0, p1, p2, p3); // 322.63
 
 		const double dist = 123.45;
-		double t = CubicBezier.GetTime(p0, p1, p2, p3, dist); // 0.375
+		double t = CubicBezier.ArcTime(p0, p1, p2, p3, dist); // 0.375
 
 		CubicBezier.Split(p0, p1, p2, p3, t, out var p11, out var p12, out var ps, out var p21, out var p22);
 
-		double len1 = CubicBezier.Length(p0, p11, p12, ps);
+		double len1 = CubicBezier.ArcLength(p0, p11, p12, ps);
 		Assert.Equal(dist, len1, precision: 4);
 
-		double len2 = CubicBezier.Length(ps, p21, p22, p3);
+		double len2 = CubicBezier.ArcLength(ps, p21, p22, p3);
 		Assert.Equal(length, len1 + len2, precision: 5);
 	}
 
@@ -204,17 +314,17 @@ public class CubicBezierTest
 
 		// B(p0,p1,p2,p3;t) has loop (self intersection near (130,110)
 
-		var length = CubicBezier.Length(p0, p1, p2, p3); // 245.93
+		var length = CubicBezier.ArcLength(p0, p1, p2, p3); // 245.93
 
 		for (double d = 0; d < length; d += 10.0)
 		{
-			double t = CubicBezier.GetTime(p0, p1, p2, p3, d);
+			double t = CubicBezier.ArcTime(p0, p1, p2, p3, d);
 
 			CubicBezier.Split(p0, p1, p2, p3, t, out var p11, out var p12, out var ps, out _, out _);
 
-			var len = CubicBezier.Length(p0, p11, p12, ps);
+			var len = CubicBezier.ArcLength(p0, p11, p12, ps);
 
-			// TODO fails with better precision... we should improve GetTime()
+			// TODO fails with better precision... we should improve ArcTime()
 			Assert.Equal(d, len, precision: 3);
 		}
 	}
@@ -228,15 +338,15 @@ public class CubicBezierTest
 		var p2 = new XY(230, 70);
 		var p3 = new XY(70, 170);
 
-		var length = CubicBezier.Length(p0, p1, p2, p3); // 245.93
+		var length = CubicBezier.ArcLength(p0, p1, p2, p3); // 245.93
 
 		// test distance out of range: less than 0 (expect t=0)
 		// or greater than arc length (expect t=1)
 
-		double t = CubicBezier.GetTime(p0, p1, p2, p3, -10.0);
+		double t = CubicBezier.ArcTime(p0, p1, p2, p3, -10.0);
 		Assert.Equal(0.0, t);
 
-		t = CubicBezier.GetTime(p0, p1, p2, p3, length + 10.0);
+		t = CubicBezier.ArcTime(p0, p1, p2, p3, length + 10.0);
 		Assert.Equal(1.0, t);
 	}
 
