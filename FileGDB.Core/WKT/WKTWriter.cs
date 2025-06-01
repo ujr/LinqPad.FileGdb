@@ -3,7 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 
-namespace FileGDB.Core;
+namespace FileGDB.Core.WKT;
 
 public class WKTWriter : IDisposable
 {

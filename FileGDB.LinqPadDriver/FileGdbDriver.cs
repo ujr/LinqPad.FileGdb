@@ -6,6 +6,8 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using FileGDB.Core;
+using FileGDB.Core.Shapes;
+using FileGDB.Core.WKT;
 using JetBrains.Annotations;
 using LINQPad;
 using LINQPad.Extensibility.DataContext;
@@ -119,6 +121,10 @@ public class FileGdbDriver : DynamicDataContextDriver
 	{
 		//Debugger.Launch();
 		yield return typeof(Core.FileGDB).Namespace!;
+		yield return typeof(ShapeEngine).Namespace!;
+		yield return typeof(ShapeExtensions).Namespace!;
+		yield return typeof(ShapeBufferExtensions).Namespace!;
+		yield return typeof(XY).Namespace!;
 	}
 
 	#region Output formatting

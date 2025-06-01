@@ -26,6 +26,51 @@ public static class CubicBezier
 		return q0 * ss + q1 * 2 * s * t + q2 * tt;
 	}
 
+	/// <returns>The first derivative at parameter value <paramref name="t"/>
+	/// of the cubic Bézier curve given by the four control points.</returns>
+	public static XY Derivative(XY p0, XY p1, XY p2, XY p3, double t)
+	{
+		// B′(t) = 3(1−t)^2 (p1-p0) + 6(1-t)t (p2-p1) + 3t^2 (p3-p2),
+		// which is three times the quadratic Bezier of the differences
+		// p1-p0, p2-p1, p3-p2
+		return 3 * Compute(p1 - p0, p2 - p1, p3 - p2, t);
+	}
+
+	/// <returns>The normalized (length 1) tangent vector (first
+	/// derivative) at parameter value <paramref name="t"/> of the
+	/// cubic Bézier curve given by the four control points.</returns>
+	public static XY Tangent(XY p0, XY p1, XY p2, XY p3, double t)
+	{
+		var d = Compute(p1 - p0, p2 - p1, p3 - p2, t); // B'(t)/3
+		var m = Math.Sqrt(d.X * d.X + d.Y * d.Y); // magnitude
+		return new XY(d.X / m, d.Y / m); // normalized
+	}
+
+	/// <returns>The normalized (length 1) normal vector at parameter
+	/// value <paramref name="t"/> of the cubic Bézier curve given by
+	/// the four control points.</returns>
+	public static XY Normal(XY p0, XY p1, XY p2, XY p3, double t)
+	{
+		var d = Compute(p1 - p0, p2 - p1, p3 - p2, t); // B'(t)/3
+		var m = Math.Sqrt(d.X * d.X + d.Y * d.Y); // magnitude
+		return new XY(-d.Y / m, d.X / m); // rotated 90° ccw and normalized
+	}
+
+	/// <returns>The centroid (center of gravity) of the cubic Bézier
+	/// curve given by the four control points, assuming point density
+	/// varies inversely with "traversal speed" as the parameter goes
+	/// uniformly from 0 to 1.</returns>
+	public static XY Centroid(XY p0, XY p1, XY p2, XY p3)
+	{
+		// The centroid of a curve is the average of all the points
+		// on the curve. The centroid of a parametric curve B(t) over
+		// the interval [0,1] is the integral $\int_0^1 B(t) dt$
+		// (assuming uniform parameterization!) Computing the integral
+		// for the cubic Bézier the result is the average of the four
+		// control points, that is:
+		return 0.25 * (p0 + p1 + p2 + p3);
+	}
+
 	// Alternative implementation for splitting using a triangle matrix.
 	// Elegant and probably extends to higher order Bézier curves. But
 	// for our cubic Bézier purposes, stick to the specific case only.
@@ -57,10 +102,9 @@ public static class CubicBezier
 	//}
 
 	/// <summary>
-	/// Split the cubic Bézier curve given by p0,p1,p2,p3 at the
-	/// parameter value <paramref name="t"/> between 0 and 1.
-	/// The resulting two sub curves are cubic Béziers as well,
-	/// given by p0,p11,p12,ps and by ps,p21,p22,p3.
+	/// Split the given cubic Bézier curve at parameter value <paramref name="t"/>
+	/// (between 0 and 1). The resulting two sub curves are cubic Béziers as well,
+	/// given by control points p0,p11,p12,ps and by control points ps,p21,p22,p3.
 	/// </summary>
 	public static void Split(XY p0, XY p1, XY p2, XY p3, double t,
 		out XY p11, out XY p12, out XY ps, out XY p21, out XY p22)
@@ -84,25 +128,47 @@ public static class CubicBezier
 	}
 
 	/// <summary>
-	/// Split the cubic Bézier curve given by p0,p1,p2,p3 at the given
-	/// two parameter values <paramref name="t1"/> and <paramref name="t2"/>.
-	/// The control points for the curve segment in-between are r0,r1,r2,r3.
+	/// Split the given cubic Bézier curve at the given two parameter values
+	/// <paramref name="t1"/> and <paramref name="t2"/>. Return the control
+	/// points for the sub-curve in-between. If <paramref name="t1"/> &gt;
+	/// <paramref name="t2"/>, the result will be reversed.
 	/// </summary>
 	public static void Split(XY p0, XY p1, XY p2, XY p3, double t1, double t2,
 		out XY r0, out XY r1, out XY r2, out XY r3)
 	{
-		throw new NotImplementedException(); // TODO
+		if (Math.Abs(t2 - t1) < double.Epsilon)
+		{
+			r0 = r1 = r2 = r3 = Compute(p0, p1, p2, p3, t1);
+			return;
+		}
+
+		bool reverse = t1 > t2;
+
+		if (reverse)
+		{
+			(t1, t2) = (t2, t1);
+		}
+
+		// split at t1, then the right part again at "t2" (adjusted)
+		Split(p0, p1, p2, p3, t1, out _, out _, out r0, out var q1, out var q2);
+		double s = (t2 - t1) / (1 - t1); // TODO handle t1==1 (div 0)
+		Split(r0, q1, q2, p3, s, out r1, out r2, out r3, out _, out _);
+
+		if (reverse)
+		{
+			(r0, r1, r2, r3) = (r3, r2, r1, r0);
+		}
 	}
 
 	/// <summary>
 	/// Split a cubic Bézier at a given distance along the curve.
 	/// This is a simple convenience method calling Split using
-	/// the parameter value from <see cref="GetTime"/>.
+	/// the parameter value from <see cref="ArcTime"/>.
 	/// </summary>
 	public static void SplitAtDistance(XY p0, XY p1, XY p2, XY p3, double distance,
 		out XY p11, out XY p12, out XY ps, out XY p21, out XY p22)
 	{
-		var t = GetTime(p0, p1, p2, p3, distance);
+		var t = ArcTime(p0, p1, p2, p3, distance);
 
 		Split(p0, p1, p2, p3, t, out p11, out p12, out ps, out p21, out p22);
 	}
@@ -130,7 +196,7 @@ public static class CubicBezier
 	/// it with <paramref name="steps"/> line segments, that is, by sampling at
 	/// <paramref name="steps"/>+1 points.
 	/// </summary>
-	public static double Length(XY p0, XY p1, XY p2, XY p3, int steps)
+	public static double ArcLength(XY p0, XY p1, XY p2, XY p3, int steps)
 	{
 		double length = 0.0;
 		double dx, dy;
@@ -171,7 +237,7 @@ public static class CubicBezier
 	/// <remarks>If <paramref name="maxError"/> is very tiny, this function
 	/// may take a lot of time. Down to 1E-10 is still very fast, though.
 	/// Stack depth probably no deeper than 25 for small allowed errors.</remarks>
-	public static double Length(XY p0, XY p1, XY p2, XY p3, double maxError = -1)
+	public static double ArcLength(XY p0, XY p1, XY p2, XY p3, double maxError = -1)
 	{
 		if (!(maxError > 0)) maxError = 1E-8; // even with lat/lng in the mm range
 
@@ -182,11 +248,11 @@ public static class CubicBezier
 		// https://steve.hollasch.net/cgindex/curves/cbezarclen.html
 
 		double length = 0.0;
-		LengthRecursive(p0, p1, p2, p3, ref length, maxError);
+		ArcLength(p0, p1, p2, p3, ref length, maxError);
 		return length;
 	}
 
-	private static void LengthRecursive(XY p0, XY p1, XY p2, XY p3, ref double length, double maxError)
+	private static void ArcLength(XY p0, XY p1, XY p2, XY p3, ref double length, double maxError)
 	{
 		double scaffoldLength = 0.0;
 		scaffoldLength += XY.Distance(p0, p1);
@@ -198,8 +264,8 @@ public static class CubicBezier
 		if (scaffoldLength - chordLength > maxError)
 		{
 			Split(p0, p1, p2, p3, 0.5, out XY p11, out XY p12, out XY ps, out XY p21, out XY p22);
-			LengthRecursive(p0, p11, p12, ps, ref length, maxError);
-			LengthRecursive(ps, p21, p22, p3, ref length, maxError);
+			ArcLength(p0, p11, p12, ps, ref length, maxError);
+			ArcLength(ps, p21, p22, p3, ref length, maxError);
 		}
 		else
 		{
@@ -221,18 +287,18 @@ public static class CubicBezier
 	/// MetaPost calls this "arctime dist of path" and computes
 	/// it internally with a far more advanced algorithm.
 	/// </remarks>
-	public static double GetTime(XY p0, XY p1, XY p2, XY p3, double distance, double maxError = -1)
+	public static double ArcTime(XY p0, XY p1, XY p2, XY p3, double distance, double maxError = -1)
 	{
 		if (double.IsNaN(distance)) return double.NaN;
 		if (distance <= 0) return 0; // distance 0 is reached at t=0
 		if (!(maxError > 0)) maxError = 1E-8; // default precision
 		double length = 0.0; // accumulator
-		double t = GetTimeRecursive(p0, p1, p2, p3, 0.0, 1.0, ref length, distance, maxError);
+		double t = ArcTime(p0, p1, p2, p3, 0.0, 1.0, ref length, distance, maxError);
 		if (t > 1.0) t = 1.0; // don't go beyond 1 even if distance > arc length
 		return t;
 	}
 
-	private static double GetTimeRecursive(XY p0, XY p1, XY p2, XY p3, double t0, double t1, ref double length, double goal, double maxError)
+	private static double ArcTime(XY p0, XY p1, XY p2, XY p3, double t0, double t1, ref double length, double goal, double maxError)
 	{
 		double scaffoldLength = 0.0;
 		scaffoldLength += XY.Distance(p0, p1);
@@ -251,11 +317,11 @@ public static class CubicBezier
 
 			var t01 = half * (t0 + t1); // mid-time
 
-			t = GetTimeRecursive(p0, p11, p12, ps, t0, t01, ref length, goal, maxError);
+			t = ArcTime(p0, p11, p12, ps, t0, t01, ref length, goal, maxError);
 
 			if (length < goal) // or equivalently: t > 1
 			{
-				t = GetTimeRecursive(ps, p21, p22, p3, t01, t1, ref length, goal, maxError);
+				t = ArcTime(ps, p21, p22, p3, t01, t1, ref length, goal, maxError);
 			}
 		}
 		else
@@ -274,12 +340,12 @@ public static class CubicBezier
 	/// <summary>
 	/// Get the bounding box around the cubic Bézier curve
 	/// </summary>
-	public static Envelope GetExtent(XY p0, XY p1, XY p2, XY p3)
+	public static BoundingBox BoundingBox(XY p0, XY p1, XY p2, XY p3)
 	{
 		// Start with a box spanned by p0,p3 (start and end point):
 		// the bounding box cannot be smaller than that; depending
 		// on the curve's extrema, it may be grown below
-		var extent = new Envelope
+		var extent = new BoundingBox
 		{
 			XMin = Math.Min(p0.X, p3.X),
 			XMax = Math.Max(p0.X, p3.X),
@@ -294,7 +360,7 @@ public static class CubicBezier
 			return extent;
 		}
 
-		// Coefficients of the derivative B'(t) of the cubic B(t)
+		// Coefficients of the derivative dB(t)/dt of the cubic B(t)
 		// when re-arranged as a polynomial of the form a*tt+b*t+c:
 		XY a = 3.0 * (-1.0 * p0 + 3.0 * p1 - 3.0 * p2 + p3);
 		XY b = 6.0 * (p0 - 2.0 * p1 + p2);
@@ -378,6 +444,94 @@ public static class CubicBezier
 		}
 	}
 
-	// TODO Normal() and/or Derivative()/Tangent() (normalized?)
 
+
+
+
+	#region Trying stuff from MP (study/drop)
+
+	private static double ArcTest(XY p0, XY p1, XY p2, XY p3, double a_goal)
+	{
+		XY d0 = p1 - p0;
+		XY d1 = p2 - p1;
+		XY d2 = p3 - p2;
+
+		return ArcTest(d0, d1, d2, a_goal);
+	}
+
+	private static double ArcTest(XY d0, XY d1, XY d2, double a_goal)
+	{
+		// length of each of d0, d1, d2
+		var v0 = Math.Sqrt(d0.X * d0.X + d0.Y * d0.Y); // pyth_add(v0, dx0, dy0)
+		var v1 = Math.Sqrt(d1.X * d1.X + d1.Y * d1.Y); // pyth_add(v1, dx1, dy1)
+		var v2 = Math.Sqrt(d2.X * d2.X + d2.Y * d2.Y); // pyth_add(v2, dx2, dy2)
+
+		if (v0 >= 4.0 || v1 >= 4.0 || v2 >= 4.0) // fraction_four_t, TODO drop here
+		{
+			// mp->arith_error = true
+			return double.IsPositiveInfinity(a_goal) ? double.PositiveInfinity : -2.0;
+		}
+
+		var arg1 = 0.5 * (d0.X + d2.X) + d1.X;
+		var arg2 = 0.5 * (d0.Y + d2.Y) + d1.Y;
+
+		// twice the norm of the quadratic at t=1/2
+		var v02 = Math.Sqrt(arg1 * arg1 + arg2 * arg2);
+
+		const double arc_tol_k = 1.0 / 4096; // a global in MP
+
+		return ArcTest(d0, d1, d2, v0, v02, v2, a_goal, arc_tol_k);
+	}
+
+	private static double ArcTest(XY dz0, XY dz1, XY dz2, double v0, double v02, double v2, double a_goal, double tol_orig)
+	{
+		bool simple; // are control points confined to a 90° sector?
+		XY dz01, dz12, dz02; // bisection results
+		double v002, v022; // twice the velocity at t=1/4 and t=3/4
+		double arc; // best arc length estimate before recursion
+		double arc1; // arc length estimate for the first half
+		double tol = tol_orig;
+
+		// <Bisect the Bézier quadratic given by dx0, dy0, dx1, dy1, dx2, dy2>
+		// This code assumes all dx and dy have magnitude < fraction_four (...)
+		dz01 = 0.5 * (dz0 + dz1);
+		dz12 = 0.5 * (dz1 + dz2);
+		dz02 = 0.5 * (dz01 + dz12);
+
+		// <Initialize v002, v022, and the arc length estimate arc; if it overflows return>
+		double arg1 = 0.5 * (dz0.X + dz02.X) + dz01.X;
+		double arg2 = 0.5 * (dz0.Y + dz02.Y) + dz01.Y;
+		v002 = Math.Sqrt(arg1 * arg1 + arg2 * arg2); // pyth_add
+		arg1 = 0.5 * (dz02.X + dz2.X) + dz12.X;
+		arg2 = 0.5 * (dz02.Y + dz2.Y) + dz12.Y;
+		v022 = Math.Sqrt(arg1 * arg1 + arg2 * arg2); // pyth_add
+		double tmp = 0.5 * (v02 + 2.0);
+		arc1 = 0.5 * (0.5 * (v0 + tmp) - v002) + v002;
+		arc = 0.5 * (0.5 * (v2 + tmp) - v022) + v022;
+		// ... overflow checks, not understood, assuming no overflow: (otherwise return -Inf or -2)
+		arc += arc1;
+
+		// <Test if the control points are confined to one quadrant or rotating them 45° would put them in one quadrant. Then set simple appropriately>
+		simple = true; // TODO
+
+		double simply = Math.Abs(arc - 0.5 * (v0 + v2) - v02);
+
+		if (simple && simply <= tol)
+		{
+			if (arc < a_goal)
+			{
+				return arc;
+			}
+
+			// <Estimate when the arc length reaches a_goal and set arc_test to that time minus two>
+		}
+		else
+		{
+			// <Use one or two recursive calls to compute the arc_test function>
+		}
+
+		throw new NotImplementedException();
+	}
+
+	#endregion
 }

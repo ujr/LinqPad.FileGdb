@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using FileGDB.Core.Shapes;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -47,7 +48,7 @@ public class GeometryBlobTest : IDisposable
 		// Length is an alias for Bytes.Count:
 		Assert.Equal(blob.Length, blob.Bytes.Count);
 
-		var factory = new ShapeFactory();
+		var factory = new ShapeBuilder();
 
 		blob.Read(factory);
 

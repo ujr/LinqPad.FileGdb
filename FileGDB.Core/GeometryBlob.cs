@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Text;
+using FileGDB.Core.Shapes;
 
 namespace FileGDB.Core;
 
@@ -53,38 +54,38 @@ public class GeometryBlob
 	/// <remarks>This is a convenience wrapper around <see cref="Read"/></remarks>
 	public Shape Shape => _shape ??= GetShape(null);
 
-	private ShapeBuffer GetShapeBuffer(ShapeFactory? factory, bool validate = true)
+	private ShapeBuffer GetShapeBuffer(ShapeBuilder? factory, bool validate = true)
 	{
-		factory ??= new ShapeFactory();
+		factory ??= new ShapeBuilder();
 		Read(factory, validate);
 		return factory.ToShapeBuffer();
 	}
 
-	private Shape GetShape(ShapeFactory? factory, bool validate = true)
+	private Shape GetShape(ShapeBuilder? factory, bool validate = true)
 	{
-		factory ??= new ShapeFactory();
+		factory ??= new ShapeBuilder();
 		Read(factory, validate);
 		return factory.ToShape();
 	}
 
 	/// <summary>
-	/// Read this geometry blob into the given shape factory.
+	/// Read this geometry blob into the given shape builder.
 	/// </summary>
 	/// <remarks>When reading many geometry blobs, prefer this method
-	/// (reusing a <see cref="ShapeFactory"/> instance) over reading the
+	/// (reusing a <see cref="ShapeBuilder"/> instance) over reading the
 	/// <see cref="Shape"/> and <see cref="ShapeBuffer"/> properties.</remarks>
-	public void Read(ShapeFactory factory, bool validate = true)
+	public void Read(ShapeBuilder builder, bool validate = true)
 	{
-		if (factory is null)
-			throw new ArgumentNullException(nameof(factory));
+		if (builder is null)
+			throw new ArgumentNullException(nameof(builder));
 
 		var reader = new GeometryBlobReader(_geomDef, _blob);
 
-		reader.Read(factory);
+		reader.Read(builder);
 
 		if (validate)
 		{
-			if (!factory.Validate(out string message))
+			if (!builder.Validate(out string message))
 			{
 				throw new FileGDBException(message);
 			}
