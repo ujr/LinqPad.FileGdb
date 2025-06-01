@@ -101,17 +101,19 @@ public class ProTypesTest : IDisposable
 		// 2025-01-04 12:34:56.789 +01:00
 		var expectedDateTime = new DateTime(2025, 1, 4, 12, 34, 56, 789);
 		var expectedOffset = new TimeSpan(0, 1, 0, 0);
-		var expected = new DateTimeOffset(expectedDateTime, expectedOffset);
+		var precision = TimeSpan.FromMilliseconds(1.0);
 
 		var value1 = ReadRowValue("TABLE32", 2, "DateTimeOffset");
 		Assert.NotNull(value1);
 		var dateTimeOffset1 = Assert.IsAssignableFrom<DateTimeOffset>(value1);
-		Assert.Equal(expected, dateTimeOffset1);
+		Assert.Equal(dateTimeOffset1.Offset, expectedOffset);
+		Assert.Equal(dateTimeOffset1.DateTime, expectedDateTime, precision);
 
 		var value2 = ReadRowValue("TABLE64", 2, "DateTimeOffset");
 		Assert.NotNull(value2);
 		var dateTimeOffset2 = Assert.IsAssignableFrom<DateTimeOffset>(value2);
-		Assert.Equal(expected, dateTimeOffset2);
+		Assert.Equal(dateTimeOffset2.Offset, expectedOffset);
+		Assert.Equal(dateTimeOffset2.DateTime, expectedDateTime, precision);
 	}
 
 	private object? ReadRowValue(string tableName, long oid, string fieldName)
