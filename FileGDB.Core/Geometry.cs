@@ -523,4 +523,3 @@ public class Geometry : IGeometry
 
 	#endregion
 }
-}
