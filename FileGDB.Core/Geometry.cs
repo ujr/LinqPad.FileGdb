@@ -461,12 +461,51 @@ public class Geometry : IGeometry
 	/// <summary>
 	/// Given three points, compute center and radius of the circumcircle.
 	/// </summary>
-	/// <param name="a"></param>
-	/// <param name="b"></param>
-	/// <param name="c"></param>
+	/// <param name="a">Point on circle</param>
+	/// <param name="b">Point on circle</param>
+	/// <param name="c">Point on circle</param>
 	/// <param name="center">Center of circumcircle</param>
 	/// <returns>Radius of circumcircle</returns>
+	/// <remarks>For collinear points the circumcircle does not exist:
+	/// return an empty center point and an infinite radius.</remarks>
 	public static double Circumcircle(XY a, XY b, XY c, out XY center)
+	{
+		// Following a solution described at StackOverflow:
+		// https://stackoverflow.com/questions/52990094/calculate-circle-given-3-points-code-explanation
+		// Less computation and better results (less round-off) than my old solution below
+
+		var aux = b.X * b.X + b.Y * b.Y;
+		var ab = (a.X * a.X + a.Y * a.Y - aux) / 2;
+		var bc = (aux - c.X * c.X - c.Y * c.Y) / 2;
+		var det = (a.X - b.X) * (b.Y - c.Y) - (b.X - c.X) * (a.Y - b.Y);
+
+		if (Math.Abs(det) < 1e-10)
+		{
+			center = XY.Empty;
+			return double.PositiveInfinity;
+		}
+
+		double cx = (ab * (b.Y - c.Y) - bc * (a.Y - b.Y)) / det;
+		double cy = ((a.X - b.X) * bc - (b.X - c.X) * ab) / det;
+
+		double radius = Math.Sqrt((cx - a.X) * (cx - a.X) + (cy - a.Y) * (cy - a.Y));
+
+		center = new XY(cx, cy);
+		return radius;
+	}
+
+	/// <summary>
+	/// Given three points, compute center and radius of the circumcircle.
+	/// </summary>
+	/// <param name="a">Point on circle</param>
+	/// <param name="b">Point on circle</param>
+	/// <param name="c">Point on circle</param>
+	/// <param name="center">Center of circumcircle</param>
+	/// <returns>Radius of circumcircle</returns>
+	/// <remarks>For collinear points the circumcircle does not exist:
+	/// return an empty center point and an infinite radius.</remarks>
+	[Obsolete("Use the other method here; this one is less precise")]
+	public static double CircumcircleOld(XY a, XY b, XY c, out XY center)
 	{
 		// The circle with radius r and center o is given by
 		//    (x - o.X)^2 + (y - o.Y)^2 == r^2
