@@ -42,13 +42,6 @@ public class PointShape : Shape
 
 	public override bool IsEmpty => double.IsNaN(X) || double.IsNaN(Y);
 
-	protected override void ToWKT(WKTWriter wkt)
-	{
-		wkt.BeginPoint(HasZ, HasM, HasID);
-		wkt.AddVertex(X, Y, Z, M, ID);
-		wkt.EndShape();
-	}
-
 	public override int ToShapeBuffer(byte[]? bytes, int offset = 0)
 	{
 		if (offset < 0)

@@ -49,13 +49,6 @@ public class PolygonShape : MultipartShape
 		return _partsCache[partIndex]!;
 	}
 
-	protected override void ToWKT(WKTWriter wkt)
-	{
-		wkt.BeginMultiPolygon(HasZ, HasM, HasID);
-		WriteCoordinates(wkt);
-		wkt.EndShape();
-	}
-
 	private class ReadOnlyParts : IReadOnlyList<PolygonShape>
 	{
 		private readonly PolygonShape _parent;

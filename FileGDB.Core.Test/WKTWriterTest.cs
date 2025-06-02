@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using FileGDB.Core.WKT;
 using Xunit;
 
 namespace FileGDB.Core.Test;
@@ -297,7 +298,7 @@ public class WKTWriterTest
 		Assert.Equal("POLYGON ZM EMPTY", buffer.ToString());
 	}
 
-	[Fact]//[Fact(Skip="not yet implemented")]
+	[Fact]
 	public void CanWriteMultiPolygon()
 	{
 		var buffer = new StringBuilder();

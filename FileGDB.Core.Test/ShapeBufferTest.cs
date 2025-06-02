@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using FileGDB.Core.WKT;
 using Xunit;
 
 namespace FileGDB.Core.Test;

@@ -45,11 +45,6 @@ public class BoxShape : Shape
 	public double Width => Math.Abs(XMax - XMin);
 	public double Height => Math.Abs(YMax - YMin);
 
-	protected override void ToWKT(WKTWriter wkt)
-	{
-		wkt.WriteBox(XMin, YMin, XMax, YMax, ZMin, ZMax, MMin, MMax);
-	}
-
 	public override int ToShapeBuffer(byte[]? bytes, int offset = 0)
 	{
 		// We could emit a 5-point Polygon instead, but then we loose

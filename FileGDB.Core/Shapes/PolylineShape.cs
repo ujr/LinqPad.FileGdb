@@ -49,13 +49,6 @@ public class PolylineShape : MultipartShape
 		return _partsCache[partIndex]!;
 	}
 
-	protected override void ToWKT(WKTWriter wkt)
-	{
-		wkt.BeginMultiLineString(HasZ, HasM, HasID);
-		WriteCoordinates(wkt);
-		wkt.EndShape();
-	}
-
 	private class ReadOnlyParts : IReadOnlyList<PolylineShape>
 	{
 		private readonly PolylineShape _parent;

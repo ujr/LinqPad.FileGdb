@@ -1,7 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text;
 
 namespace FileGDB.Core.Shapes;
 
@@ -16,9 +14,9 @@ public abstract class Shape
 	public bool HasM => ShapeBuffer.GetHasM(_shapeType);
 	public bool HasID => ShapeBuffer.GetHasID(_shapeType);
 
-	protected const double DefaultZ = ShapeBuffer.DefaultZ;
-	protected const double DefaultM = ShapeBuffer.DefaultM;
-	protected const int DefaultID = ShapeBuffer.DefaultID;
+	public const double DefaultZ = ShapeBuffer.DefaultZ;
+	public const double DefaultM = ShapeBuffer.DefaultM;
+	public const int DefaultID = ShapeBuffer.DefaultID;
 
 	protected Shape(uint shapeType)
 	{
@@ -30,29 +28,6 @@ public abstract class Shape
 	public BoxShape Box => _box ??= GetBox();
 
 	public abstract bool IsEmpty { get; }
-
-	public string ToWKT(int decimalDigits = -1)
-	{
-		var buffer = new StringBuilder();
-		ToWKT(buffer, decimalDigits);
-		return buffer.ToString();
-	}
-
-	public void ToWKT(StringBuilder buffer, int decimalDigits = -1)
-	{
-		var writer = new StringWriter(buffer);
-		ToWKT(writer, decimalDigits);
-		writer.Flush();
-	}
-
-	public void ToWKT(TextWriter writer, int decimalDigits = -1)
-	{
-		var wkt = new WKTWriter(writer) { DecimalDigits = decimalDigits };
-		ToWKT(wkt);
-		wkt.Flush();
-	}
-
-	protected abstract void ToWKT(WKTWriter wkt);
 
 	public byte[] ToShapeBuffer()
 	{

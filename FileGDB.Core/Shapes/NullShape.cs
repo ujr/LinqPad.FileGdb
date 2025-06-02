@@ -1,5 +1,3 @@
-using System;
-
 namespace FileGDB.Core.Shapes;
 
 public class NullShape : Shape
@@ -7,11 +5,6 @@ public class NullShape : Shape
 	private NullShape() : base((uint)ShapeType.Null) { }
 
 	public override bool IsEmpty => true;
-
-	protected override void ToWKT(WKTWriter wkt)
-	{
-		throw new NotSupportedException("Cannot write Null shape as WKT");
-	}
 
 	public override int ToShapeBuffer(byte[]? bytes, int offset = 0)
 	{

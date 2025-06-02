@@ -16,20 +16,6 @@ public class MultipointShape : PointListShape
 		: base(GetShapeType(GeometryType.Multipoint, flags), points)
 	{ }
 
-	protected override void ToWKT(WKTWriter wkt)
-	{
-		wkt.BeginMultipoint(HasZ, HasM, HasID);
-		for (int i = 0; i < NumPoints; i++)
-		{
-			var xy = CoordsXY[i];
-			var z = CoordsZ is null ? DefaultZ : CoordsZ[i];
-			var m = CoordsM is null ? DefaultM : CoordsM[i];
-			var id = CoordsID is null ? DefaultID : CoordsID[i];
-			wkt.AddVertex(xy.X, xy.Y, z, m, id);
-		}
-		wkt.EndShape();
-	}
-
 	public override int ToShapeBuffer(byte[]? bytes, int offset = 0)
 	{
 		if (offset < 0)

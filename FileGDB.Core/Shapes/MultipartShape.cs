@@ -147,27 +147,6 @@ public abstract class MultipartShape : PointListShape
 			.ToList();
 	}
 
-	protected void WriteCoordinates(WKTWriter writer)
-	{
-		for (int i = 0, j = 0; i < NumPoints; i++)
-		{
-			int k = GetPartStart(j);
-			if (i == k) // first vertex of new part
-				//if (j < _partStarts.Count && i == _partStarts[j])
-			{
-				writer.NewPart();
-				j += 1;
-			}
-
-			var xy = CoordsXY[i];
-			var z = CoordsZ is null ? DefaultZ : CoordsZ[i];
-			var m = CoordsM is null ? DefaultM : CoordsM[i];
-			var id = CoordsID?[i] ?? DefaultID; // null unless HasID
-
-			writer.AddVertex(xy.X, xy.Y, z, m, id);
-		}
-	}
-
 	public override int ToShapeBuffer(byte[]? bytes, int offset = 0)
 	{
 		if (offset < 0)

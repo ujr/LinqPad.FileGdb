@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Text;
 
 namespace FileGDB.Core;
@@ -85,9 +84,6 @@ public class ShapeBuffer
 
 	public void QueryCoords(int globalIndex, out double x, out double y, out double z, out double m, out int id)
 	{
-		if (globalIndex < 0)
-			throw new ArgumentOutOfRangeException(nameof(globalIndex));
-
 		switch (GeometryType)
 		{
 			case GeometryType.Null:
@@ -97,7 +93,7 @@ public class ShapeBuffer
 				return;
 
 			case GeometryType.Point:
-				if (globalIndex > 0)
+				if (globalIndex != 0)
 					throw new ArgumentOutOfRangeException(nameof(globalIndex));
 				QueryPointCoords(out x, out y, out z, out m, out id);
 				return;
@@ -118,15 +114,18 @@ public class ShapeBuffer
 				throw new NotImplementedException();
 
 			case GeometryType.Bag:
-				throw new NotSupportedException();
+				throw new NotSupportedException("Geometry Bag is not supported");
 
 			default:
-				throw new ArgumentOutOfRangeException();
+				throw new NotSupportedException($"Unknown geometry type: {GeometryType}");
 		}
 	}
 
-	private void QueryPointCoords(out double x, out double y, out double z, out double m, out int id)
+	public void QueryPointCoords(out double x, out double y, out double z, out double m, out int id)
 	{
+		if (GeometryType != GeometryType.Point)
+			throw new InvalidOperationException($"{nameof(GeometryType)} is not {nameof(GeometryType.Point)}");
+
 		x = ReadDouble(4);
 		y = ReadDouble(12);
 
@@ -155,8 +154,11 @@ public class ShapeBuffer
 		id = HasID ? ReadInt32(offset) : DefaultID;
 	}
 
-	private void QueryMultipointCoords(int index, out double x, out double y, out double z, out double m, out int id)
+	public void QueryMultipointCoords(int index, out double x, out double y, out double z, out double m, out int id)
 	{
+		if (GeometryType != GeometryType.Multipoint)
+			throw new InvalidOperationException($"{nameof(GeometryType)} is not {nameof(GeometryType.Multipoint)}");
+
 		var numPoints = GetPointCount();
 		if (index < 0 || index >= numPoints)
 			throw new ArgumentOutOfRangeException(nameof(index));
@@ -202,8 +204,12 @@ public class ShapeBuffer
 		}
 	}
 
-	private void QueryMultipartCoords(int index, out double x, out double y, out double z, out double m, out int id)
+	public void QueryMultipartCoords(int index, out double x, out double y, out double z, out double m, out int id)
 	{
+		if (GeometryType != GeometryType.Polyline && GeometryType != GeometryType.Polygon)
+			throw new InvalidOperationException(
+				$"{nameof(GeometryType)} is not {nameof(GeometryType.Polyline)} and not {GeometryType.Polygon}");
+
 		var numPoints = GetPointCount();
 		if (index < 0 || index >= numPoints)
 			throw new ArgumentOutOfRangeException(nameof(index));
@@ -288,115 +294,6 @@ public class ShapeBuffer
 
 		return offset - startOffset;
 	}
-
-	public string ToWKT(int decimalDigits = -1)
-	{
-		var buffer = new StringBuilder();
-		ToWKT(buffer, decimalDigits);
-		return buffer.ToString();
-	}
-
-	public void ToWKT(StringBuilder buffer, int decimalDigits = -1)
-	{
-		var writer = new StringWriter(buffer);
-		ToWKT(writer, decimalDigits);
-		writer.Flush();
-	}
-
-	public void ToWKT(TextWriter writer, int decimalDigits = -1)
-	{
-		var wkt = new WKTWriter(writer) { DecimalDigits = decimalDigits };
-		WriteWKT(wkt);
-		wkt.Flush();
-	}
-
-	#region WKT methods
-
-	private void WriteWKT(WKTWriter writer)
-	{
-		switch (GeometryType)
-		{
-			case GeometryType.Null:
-				break;
-
-			case GeometryType.Point:
-				writer.BeginPoint(HasZ, HasM, HasID);
-				WritePointCoords(writer, IsEmpty);
-				writer.EndShape();
-				break;
-
-			case GeometryType.Multipoint:
-				writer.BeginMultipoint(HasZ, HasM, HasID);
-				WriteMultipointCoords(writer, NumPoints);
-				writer.EndShape();
-				break;
-
-			case GeometryType.Polyline:
-				writer.BeginMultiLineString(HasZ, HasM, HasID);
-				WriteMultipartCoords(writer, NumPoints, NumParts);
-				writer.EndShape();
-				break;
-
-			case GeometryType.Polygon:
-				writer.BeginMultiPolygon(HasZ, HasM, HasID);
-				WriteMultipartCoords(writer, NumPoints, NumParts);
-				writer.EndShape();
-				break;
-
-			case GeometryType.Envelope:
-				// WKT has no representation for Envelope
-				// PostGIS writes a 5 vertex POLYGON (or 2 vertex LINESTRING if no dx or dy)
-				// Pro's ToEsriShape() writes a 5 vertex Polygon if called on an Envelope
-				throw new InvalidOperationException("GeometryType Envelope is invalid for this operation");
-
-			case GeometryType.Any:
-				throw new InvalidOperationException("GeometryType Any is invalid for this operation");
-
-			case GeometryType.MultiPatch:
-				throw new NotSupportedException("MultiPatch to WKT is not supported");
-
-			case GeometryType.Bag:
-				throw new NotSupportedException("GeometryBag to WKT is not supported");
-
-			default:
-				throw new InvalidOperationException($"Unknown geometry type: {GeometryType}");
-		}
-	}
-
-	private void WritePointCoords(WKTWriter writer, bool isEmpty)
-	{
-		if (isEmpty) return;
-		QueryPointCoords(out var x, out var y, out var z, out var m, out var id);
-		writer.AddVertex(x, y, z, m, id);
-	}
-
-	private void WriteMultipointCoords(WKTWriter writer, int numPoints)
-	{
-		for (int i = 0; i < numPoints; i++)
-		{
-			QueryMultipointCoords(i, out var x, out var y, out var z, out var m, out int id);
-			writer.AddVertex(x, y, z, m, id);
-		}
-	}
-
-	private void WriteMultipartCoords(WKTWriter writer, int numPoints, int numParts)
-	{
-		for (int i = 0, j = 0, k = 0; i < numPoints; i++)
-		{
-			if (i == k) // first vertex of new part
-			{
-				writer.NewPart();
-				j += 1;
-				k = j < numParts ? GetPartStartIndex(j) : int.MaxValue;
-			}
-
-			QueryMultipartCoords(i, out var x, out var y, out var z, out var m, out int id);
-
-			writer.AddVertex(x, y, z, m, id);
-		}
-	}
-
-	#endregion
 
 	public override string ToString()
 	{
@@ -615,6 +512,8 @@ public class ShapeBuffer
 		return new FormatException(message ?? "Invalid shape buffer");
 	}
 
+	#region Public utilities
+
 	public static ShapeType GetShapeType(ulong shapeType)
 	{
 		return (ShapeType)(shapeType & 255);
@@ -796,49 +695,6 @@ public class ShapeBuffer
 		return shapeType;
 	}
 
-	private static ShapeType GetGeneralType(uint shapeType)
-	{
-		var basicType = (ShapeType)(shapeType & 255);
-
-		switch (basicType)
-		{
-			case ShapeType.Null:
-				return ShapeType.Null;
-			case ShapeType.Point:
-			case ShapeType.PointZ:
-			case ShapeType.PointZM:
-			case ShapeType.PointM:
-			case ShapeType.GeneralPoint:
-				return ShapeType.GeneralPoint;
-			case ShapeType.Multipoint:
-			case ShapeType.MultipointZ:
-			case ShapeType.MultipointZM:
-			case ShapeType.MultipointM:
-			case ShapeType.GeneralMultipoint:
-				return ShapeType.GeneralMultipoint;
-			case ShapeType.Polyline:
-			case ShapeType.PolylineZ:
-			case ShapeType.PolylineZM:
-			case ShapeType.PolylineM:
-			case ShapeType.GeneralPolyline:
-				return ShapeType.GeneralPolyline;
-			case ShapeType.Polygon:
-			case ShapeType.PolygonZ:
-			case ShapeType.PolygonZM:
-			case ShapeType.PolygonM:
-			case ShapeType.GeneralPolygon:
-				return ShapeType.GeneralPolygon;
-			case ShapeType.MultiPatch:
-			case ShapeType.MultiPatchM:
-			case ShapeType.GeneralMultiPatch:
-				return ShapeType.GeneralMultiPatch;
-			case ShapeType.GeometryBag:
-			case ShapeType.Box:
-			default:
-				throw new InvalidOperationException($"No general type for shape type {basicType}");
-		}
-	}
-
 	public static int GetPointBufferSize(bool hasZ, bool hasM, bool hasID)
 	{
 		int length = 4 + 8 + 8;
@@ -901,6 +757,53 @@ public class ShapeBuffer
 
 		return true;
 	}
+
+	private static ShapeType GetGeneralType(uint shapeType)
+	{
+		var basicType = (ShapeType)(shapeType & 255);
+
+		switch (basicType)
+		{
+			case ShapeType.Null:
+				return ShapeType.Null;
+			case ShapeType.Point:
+			case ShapeType.PointZ:
+			case ShapeType.PointZM:
+			case ShapeType.PointM:
+			case ShapeType.GeneralPoint:
+				return ShapeType.GeneralPoint;
+			case ShapeType.Multipoint:
+			case ShapeType.MultipointZ:
+			case ShapeType.MultipointZM:
+			case ShapeType.MultipointM:
+			case ShapeType.GeneralMultipoint:
+				return ShapeType.GeneralMultipoint;
+			case ShapeType.Polyline:
+			case ShapeType.PolylineZ:
+			case ShapeType.PolylineZM:
+			case ShapeType.PolylineM:
+			case ShapeType.GeneralPolyline:
+				return ShapeType.GeneralPolyline;
+			case ShapeType.Polygon:
+			case ShapeType.PolygonZ:
+			case ShapeType.PolygonZM:
+			case ShapeType.PolygonM:
+			case ShapeType.GeneralPolygon:
+				return ShapeType.GeneralPolygon;
+			case ShapeType.MultiPatch:
+			case ShapeType.MultiPatchM:
+			case ShapeType.GeneralMultiPatch:
+				return ShapeType.GeneralMultiPatch;
+			case ShapeType.GeometryBag:
+			case ShapeType.Box:
+			default:
+				throw new InvalidOperationException($"No general type for shape type {basicType}");
+		}
+	}
+
+	#endregion
+
+	#region Writing a Shape Buffer
 
 	public static int WriteShapeType(uint shapeType, byte[] bytes, int offset)
 	{
@@ -974,4 +877,6 @@ public class ShapeBuffer
 
 		return 8; // bytes written
 	}
+
+	#endregion
 }
