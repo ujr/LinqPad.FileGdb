@@ -1,4 +1,5 @@
 using System;
+using FileGDB.Core.Geometry;
 using Xunit;
 
 namespace FileGDB.Core.Test;
@@ -324,7 +325,7 @@ public class CubicBezierTest
 
 			var len = CubicBezier.ArcLength(p0, p11, p12, ps);
 
-			// TODO fails with better precision... we should improve ArcTime()
+			// TODO fails at higher precision... we should improve ArcTime()
 			Assert.Equal(d, len, precision: 3);
 		}
 	}

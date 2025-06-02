@@ -1,6 +1,6 @@
 using System;
 
-namespace FileGDB.Core;
+namespace FileGDB.Core.Geometry;
 
 public readonly struct XY : IEquatable<XY>
 {

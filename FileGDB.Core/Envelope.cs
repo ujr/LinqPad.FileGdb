@@ -1,3 +1,5 @@
+using FileGDB.Core.Geometry;
+
 namespace FileGDB.Core;
 
 public class Envelope : BoundingBox

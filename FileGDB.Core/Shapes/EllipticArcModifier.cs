@@ -1,4 +1,5 @@
 using System;
+using FileGDB.Core.Geometry;
 
 namespace FileGDB.Core.Shapes;
 

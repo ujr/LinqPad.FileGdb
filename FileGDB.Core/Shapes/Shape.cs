@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using FileGDB.Core.Geometry;
 
 namespace FileGDB.Core.Shapes;
 
@@ -47,6 +48,10 @@ public abstract class Shape
 		throw new NotImplementedException();
 	}
 
+	/// <summary>
+	/// Set the box to be reported by the <see cref="Box"/> property.
+	/// Set <c>null</c> to force the box to be computed from coordinates.
+	/// </summary>
 	public Shape SetBox(BoxShape? box)
 	{
 		_box = box; // null is ok (box will be lazily computed)

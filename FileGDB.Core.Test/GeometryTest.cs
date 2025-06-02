@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using FileGDB.Core.Geometry;
 using Xunit;
 
 namespace FileGDB.Core.Test;
@@ -67,11 +68,11 @@ public class GeometryTest
 
 		const int precision = 7; // decimal places
 
-		Assert.Equal(5.0, Geometry.HeronArea(a, b, c), precision);
-		Assert.Equal(5.0, Geometry.HeronArea(c, b, a), precision);
+		Assert.Equal(5.0, GeometryUtils.HeronArea(a, b, c), precision);
+		Assert.Equal(5.0, GeometryUtils.HeronArea(c, b, a), precision);
 
-		Assert.Equal(-5.0, Geometry.SignedArea(a, b, c), precision);
-		Assert.Equal(5.0, Geometry.SignedArea(c, b, a), precision);
+		Assert.Equal(-5.0, GeometryUtils.SignedArea(a, b, c), precision);
+		Assert.Equal(5.0, GeometryUtils.SignedArea(c, b, a), precision);
 	}
 
 	[Fact]
@@ -87,24 +88,24 @@ public class GeometryTest
 
 		const int precision = 9; // decimal places
 
-		Assert.Equal(Math.Sqrt(5), Geometry.CircumcircleRadius(a, b, c), precision);
+		Assert.Equal(Math.Sqrt(5), GeometryUtils.CircumcircleRadius(a, b, c), precision);
 
-		var r = Geometry.Circumcircle(a, b, c, out var center);
+		var r = GeometryUtils.Circumcircle(a, b, c, out var center);
 		Assert.Equal(Math.Sqrt(5), r, precision);
 		Assert.Equal(3.0, center.X, precision);
 		Assert.Equal(2.0, center.Y, precision);
 
-		r = Geometry.CircumcircleOld(a, b, c, out center);
+		r = GeometryUtils.CircumcircleOld(a, b, c, out center);
 		Assert.Equal(Math.Sqrt(5), r, precision);
 		Assert.Equal(3.0, center.X, precision);
 		Assert.Equal(2.0, center.Y, precision);
 
 		// Collinear points (circumcircle does not exist):
-		r = Geometry.Circumcircle(new XY(1, 1), new XY(2, 2), new XY(4, 4), out center);
+		r = GeometryUtils.Circumcircle(new XY(1, 1), new XY(2, 2), new XY(4, 4), out center);
 		Assert.True(double.IsInfinity(r) && center.IsEmpty);
 
 		// All three points the same (circumcircle does not exist):
-		r = Geometry.Circumcircle(a, a, a, out center);
+		r = GeometryUtils.Circumcircle(a, a, a, out center);
 		Assert.True(double.IsInfinity(r) && center.IsEmpty);
 
 		// TODO different quadrants
@@ -119,14 +120,14 @@ public class GeometryTest
 
 		const int precision = 4; // decimal places
 
-		Assert.Equal(0.6435, Geometry.CentralAngle(a, o, b), precision);
-		Assert.Equal(5.6397, Geometry.CentralAngle(a, o, b, true), precision);
-		Assert.Equal(5.6397, Geometry.CentralAngle(b, o, a), precision);
-		Assert.Equal(0.6435, Geometry.CentralAngle(b, o, a, true), precision);
+		Assert.Equal(0.6435, GeometryUtils.CentralAngle(a, o, b), precision);
+		Assert.Equal(5.6397, GeometryUtils.CentralAngle(a, o, b, true), precision);
+		Assert.Equal(5.6397, GeometryUtils.CentralAngle(b, o, a), precision);
+		Assert.Equal(0.6435, GeometryUtils.CentralAngle(b, o, a, true), precision);
 
 
-		Assert.Equal(0.0, Geometry.CentralAngle(a, o, a), 9);
-		Assert.Equal(2 * Math.PI, Geometry.CentralAngle(a, o, a, true), 9);
+		Assert.Equal(0.0, GeometryUtils.CentralAngle(a, o, a), 9);
+		Assert.Equal(2 * Math.PI, GeometryUtils.CentralAngle(a, o, a, true), 9);
 
 		// TODO much more: different quadrants, degenerate cases
 	}

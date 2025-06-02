@@ -1,3 +1,5 @@
+using FileGDB.Core.Geometry;
+
 namespace FileGDB.Core.Shapes;
 
 public class CubicBezierModifier : SegmentModifier

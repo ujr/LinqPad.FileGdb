@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using FileGDB.Core.Geometry;
 
 namespace FileGDB.Core.Shapes;
 

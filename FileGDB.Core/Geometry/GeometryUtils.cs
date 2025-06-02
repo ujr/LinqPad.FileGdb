@@ -1,12 +1,12 @@
 using System;
 
-namespace FileGDB.Core;
+namespace FileGDB.Core.Geometry;
 
 /// <summary>
 /// Basic geometry operations on double valued coordinates,
 /// ignorant of any particular shape representation. 
 /// </summary>
-public static class Geometry
+public static class GeometryUtils
 {
 	/// <summary>
 	/// Area of the triangle given by the three points, computed using Heron's

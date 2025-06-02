@@ -1,4 +1,4 @@
-namespace FileGDB.Core;
+namespace FileGDB.Core.Geometry;
 
 public class BoundingBox
 {
@@ -24,7 +24,6 @@ public class BoundingBox
 		// if this envelope or the given point is empty, Contains is false:
 		return XMin <= x && x <= XMax && YMin <= y && y <= YMax;
 	}
-
 
 	public void Expand(double x, double y)
 	{

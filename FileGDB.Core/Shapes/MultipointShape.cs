@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using FileGDB.Core.Geometry;
 
 namespace FileGDB.Core.Shapes;
 

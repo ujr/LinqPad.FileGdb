@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using FileGDB.Core.Geometry;
 
 namespace FileGDB.Core.Test;
 

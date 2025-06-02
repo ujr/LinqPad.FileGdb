@@ -1,4 +1,5 @@
 using System;
+using FileGDB.Core.Geometry;
 
 namespace FileGDB.Core.Shapes;
 
@@ -117,7 +118,7 @@ public class CircularArcModifier : SegmentModifier
 			return GetRadius(start, center, end);
 		}
 
-		return Geometry.Circumcircle(start, interior, end, out center);
+		return GeometryUtils.Circumcircle(start, interior, end, out center);
 	}
 
 	private static double CentralAngle(XY start, XY center, XY end, bool wantCW)
@@ -128,7 +129,7 @@ public class CircularArcModifier : SegmentModifier
 			return wantCW ? -2.0 * Math.PI : 2.0 * Math.PI;
 		}
 
-		return Geometry.CentralAngle(start, center, end, wantCW);
+		return GeometryUtils.CentralAngle(start, center, end, wantCW);
 	}
 
 	protected override int WriteShapeBufferCore(byte[] bytes, int offset)

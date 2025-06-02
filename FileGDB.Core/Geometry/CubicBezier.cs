@@ -1,6 +1,6 @@
 using System;
 
-namespace FileGDB.Core;
+namespace FileGDB.Core.Geometry;
 
 public static class CubicBezier
 {
