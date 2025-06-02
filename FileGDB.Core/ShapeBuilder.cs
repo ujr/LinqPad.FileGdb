@@ -12,7 +12,7 @@ namespace FileGDB.Core;
 /// parts, curves as needed, then call <see cref="ToShape"/>
 /// or/and <see cref="ToShapeBuffer"/>.
 /// </summary>
-public class ShapeFactory
+public class ShapeBuilder
 {
 	private readonly List<XY> _xys = new();
 	private readonly List<double> _zs = new();

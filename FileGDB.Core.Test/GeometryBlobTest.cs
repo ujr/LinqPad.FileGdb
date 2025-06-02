@@ -47,7 +47,7 @@ public class GeometryBlobTest : IDisposable
 		// Length is an alias for Bytes.Count:
 		Assert.Equal(blob.Length, blob.Bytes.Count);
 
-		var factory = new ShapeFactory();
+		var factory = new ShapeBuilder();
 
 		blob.Read(factory);
 

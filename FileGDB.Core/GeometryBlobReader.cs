@@ -34,12 +34,12 @@ public class GeometryBlobReader
 	}
 
 	/// <summary>
-	/// Decode File GDB geometry blob into the given shape factory
+	/// Decode File GDB geometry blob into the given shape builder
 	/// </summary>
-	public void Read(ShapeFactory factory)
+	public void Read(ShapeBuilder builder)
 	{
-		if (factory is null)
-			throw new ArgumentNullException(nameof(factory));
+		if (builder is null)
+			throw new ArgumentNullException(nameof(builder));
 
 		if (_blob.Length < 1)
 		{
@@ -52,7 +52,7 @@ public class GeometryBlobReader
 		switch (shapeType)
 		{
 			case ShapeType.Null:
-				ReadNull(factory);
+				ReadNull(builder);
 				break;
 
 			case ShapeType.Point:
@@ -60,7 +60,7 @@ public class GeometryBlobReader
 			case ShapeType.PointM:
 			case ShapeType.PointZM:
 			case ShapeType.GeneralPoint:
-				ReadPoint(factory, typeValue);
+				ReadPoint(builder, typeValue);
 				break;
 
 			case ShapeType.Multipoint:
@@ -68,7 +68,7 @@ public class GeometryBlobReader
 			case ShapeType.MultipointM:
 			case ShapeType.MultipointZM:
 			case ShapeType.GeneralMultipoint:
-				ReadMultipoint(factory, typeValue);
+				ReadMultipoint(builder, typeValue);
 				break;
 
 			case ShapeType.Polyline:
@@ -76,7 +76,7 @@ public class GeometryBlobReader
 			case ShapeType.PolylineM:
 			case ShapeType.PolylineZM:
 			case ShapeType.GeneralPolyline:
-				ReadMultipart(factory, typeValue);
+				ReadMultipart(builder, typeValue);
 				break;
 
 			case ShapeType.Polygon:
@@ -84,7 +84,7 @@ public class GeometryBlobReader
 			case ShapeType.PolygonM:
 			case ShapeType.PolygonZM:
 			case ShapeType.GeneralPolygon:
-				ReadMultipart(factory, typeValue);
+				ReadMultipart(builder, typeValue);
 				break;
 
 			case ShapeType.MultiPatch:
@@ -100,12 +100,12 @@ public class GeometryBlobReader
 		}
 	}
 
-	private static void ReadNull(ShapeFactory factory)
+	private static void ReadNull(ShapeBuilder builder)
 	{
-		factory.Initialize((uint)ShapeType.Null);
+		builder.Initialize((uint)ShapeType.Null);
 	}
 
-	private void ReadPoint(ShapeFactory factory, uint shapeType)
+	private void ReadPoint(ShapeBuilder builder, uint shapeType)
 	{
 		var geometryType = ShapeBuffer.GetGeometryType(shapeType);
 		if (geometryType != GeometryType.Point)
@@ -115,7 +115,7 @@ public class GeometryBlobReader
 		bool hasM = ShapeBuffer.GetHasM(shapeType);
 		bool hasID = ShapeBuffer.GetHasID(shapeType);
 
-		factory.Initialize(shapeType);
+		builder.Initialize(shapeType);
 
 		ulong ix = ReadVarUnsigned();
 		double x = ix < 1 ? double.NaN : XOrigin + (ix - 1) / XYScale;
@@ -123,7 +123,7 @@ public class GeometryBlobReader
 		ulong iy = ReadVarUnsigned();
 		double y = iy < 1 ? double.NaN : YOrigin + (iy - 1) / XYScale;
 
-		factory.AddXY(x, y);
+		builder.AddXY(x, y);
 
 		if (hasZ)
 		{
@@ -135,7 +135,7 @@ public class GeometryBlobReader
 			ulong iz = ReadVarUnsigned();
 			double z = iz < 1 ? double.NaN : ZOrigin + (iz - 1) / ZScale;
 
-			factory.AddZ(z);
+			builder.AddZ(z);
 		}
 
 		if (hasM)
@@ -148,7 +148,7 @@ public class GeometryBlobReader
 			ulong im = ReadVarUnsigned();
 			double m = im < 1 ? double.NaN : MOrigin + (im - 1) / MScale;
 
-			factory.AddM(m);
+			builder.AddM(m);
 		}
 
 		if (hasID)
@@ -156,11 +156,11 @@ public class GeometryBlobReader
 			long v = ReadVarInteger();
 			var id = unchecked((int)v);
 
-			factory.AddID(id);
+			builder.AddID(id);
 		}
 	}
 
-	private void ReadMultipoint(ShapeFactory factory, uint shapeType)
+	private void ReadMultipoint(ShapeBuilder builder, uint shapeType)
 	{
 		var geometryType = ShapeBuffer.GetGeometryType(shapeType);
 		if (geometryType != GeometryType.Multipoint)
@@ -175,31 +175,31 @@ public class GeometryBlobReader
 			throw Error($"Multipoint geometry claims to have {vu} points, which is too big for this API");
 		int numPoints = (int)vu;
 
-		factory.Initialize(shapeType);
+		builder.Initialize(shapeType);
 
 		ReadBoxXY(out double xmin, out double ymin, out double xmax, out double ymax);
 
-		factory.SetMinMaxXY(xmin, ymin, xmax, ymax);
+		builder.SetMinMaxXY(xmin, ymin, xmax, ymax);
 
-		ReadXYs(factory, numPoints);
+		ReadXYs(builder, numPoints);
 
 		if (hasZ)
 		{
-			ReadZs(factory, numPoints);
+			ReadZs(builder, numPoints);
 		}
 
 		if (hasM)
 		{
-			ReadMs(factory, numPoints);
+			ReadMs(builder, numPoints);
 		}
 
 		if (hasID)
 		{
-			ReadIDs(factory, numPoints);
+			ReadIDs(builder, numPoints);
 		}
 	}
 
-	private void ReadMultipart(ShapeFactory factory, uint shapeType)
+	private void ReadMultipart(ShapeBuilder builder, uint shapeType)
 	{
 		// GeometryBlob (input):
 		// - numPoints (vu)
@@ -242,11 +242,11 @@ public class GeometryBlobReader
 			numCurves = (int)vu;
 		}
 
-		factory.Initialize(shapeType);
+		builder.Initialize(shapeType);
 
 		ReadBoxXY(out double xmin, out double ymin, out double xmax, out double ymax);
 
-		factory.SetMinMaxXY(xmin, ymin, xmax, ymax);
+		builder.SetMinMaxXY(xmin, ymin, xmax, ymax);
 
 		int pointTally = 0;
 		for (int k = 0; k < numParts - 1; k++)
@@ -257,31 +257,31 @@ public class GeometryBlobReader
 			// geometry blob stores number of points in part (but omits this for the last part)
 			var pointCount = (int)vu;
 			pointTally += pointCount;
-			factory.AddPart(pointCount);
+			builder.AddPart(pointCount);
 		}
 
-		factory.AddPart(numPoints - pointTally);
+		builder.AddPart(numPoints - pointTally);
 
-		ReadXYs(factory, numPoints);
+		ReadXYs(builder, numPoints);
 
 		if (hasZ)
 		{
-			ReadZs(factory, numPoints);
+			ReadZs(builder, numPoints);
 		}
 
 		if (hasM)
 		{
-			ReadMs(factory, numPoints);
+			ReadMs(builder, numPoints);
 		}
 
 		if (numCurves >= 0)
 		{
-			ReadCurves(factory, numCurves);
+			ReadCurves(builder, numCurves);
 		}
 
 		if (hasID)
 		{
-			ReadIDs(factory, numPoints);
+			ReadIDs(builder, numPoints);
 		}
 	}
 
@@ -674,7 +674,7 @@ public class GeometryBlobReader
 	//	return bytes;
 	//}
 
-	private void ReadXYs(ShapeFactory factory, int numPoints)
+	private void ReadXYs(ShapeBuilder builder, int numPoints)
 	{
 		long dx = 0;
 		long dy = 0;
@@ -691,11 +691,11 @@ public class GeometryBlobReader
 			dy += iy;
 			double y = dy < 0 ? double.NaN : YOrigin + dy / XYScale;
 
-			factory.AddXY(x, y);
+			builder.AddXY(x, y);
 		}
 	}
 
-	private void ReadZs(ShapeFactory factory, int numPoints)
+	private void ReadZs(ShapeBuilder builder, int numPoints)
 	{
 		if (numPoints > 0 && !HasZ)
 		{
@@ -719,7 +719,7 @@ public class GeometryBlobReader
 			// TODO check NaN (unsure; cannot enter NaN for Z in Pro UI)
 			double z = dz < 0 ? double.NaN : ZOrigin + dz / ZScale;
 
-			factory.AddZ(z);
+			builder.AddZ(z);
 
 			if (z < zmin) zmin = z;
 			if (z > zmax) zmax = z;
@@ -727,11 +727,11 @@ public class GeometryBlobReader
 
 		if (numPoints > 0)
 		{
-			factory.SetMinMaxZ(zmin, zmax);
+			builder.SetMinMaxZ(zmin, zmax);
 		}
 	}
 
-	private void ReadMs(ShapeFactory factory, int numPoints)
+	private void ReadMs(ShapeBuilder builder, int numPoints)
 	{
 		if (numPoints > 0 && !HasM)
 		{
@@ -756,7 +756,7 @@ public class GeometryBlobReader
 
 			double m = dm < 0 ? double.NaN : MOrigin + dm / MScale;
 
-			factory.AddM(m);
+			builder.AddM(m);
 
 			if (m < mmin) mmin = m;
 			if (m > mmax) mmax = m;
@@ -764,20 +764,20 @@ public class GeometryBlobReader
 
 		if (double.IsFinite(mmin) && double.IsFinite(mmax))
 		{
-			factory.SetMinMaxM(mmin, mmax);
+			builder.SetMinMaxM(mmin, mmax);
 		}
 	}
 
-	private void ReadIDs(ShapeFactory factory, int numPoints)
+	private void ReadIDs(ShapeBuilder builder, int numPoints)
 	{
 		for (int i = 0; i < numPoints; i++)
 		{
 			long id = ReadVarInteger();
-			factory.AddID(unchecked((int)id));
+			builder.AddID(unchecked((int)id));
 		}
 	}
 
-	private void ReadCurves(ShapeFactory factory, int numCurves)
+	private void ReadCurves(ShapeBuilder builder, int numCurves)
 	{
 		for (int i = 0; i < numCurves; i++)
 		{
@@ -794,7 +794,7 @@ public class GeometryBlobReader
 					var d1 = ReadDouble();
 					var d2 = ReadDouble();
 					var cFlags = ReadInt32();
-					factory.AddCurve(new CircularArcModifier(startIndex, d1, d2, cFlags));
+					builder.AddCurve(new CircularArcModifier(startIndex, d1, d2, cFlags));
 					break;
 				case 2: // linear segment
 					throw Error($"Segment type {curveType} (line) should not occur");
@@ -805,7 +805,7 @@ public class GeometryBlobReader
 					var y1 = ReadDouble();
 					var x2 = ReadDouble();
 					var y2 = ReadDouble();
-					factory.AddCurve(new CubicBezierModifier(startIndex, x1, y1, x2, y2));
+					builder.AddCurve(new CubicBezierModifier(startIndex, x1, y1, x2, y2));
 					break;
 				case 5: // elliptic arc
 					var e1 = ReadDouble();
@@ -814,7 +814,7 @@ public class GeometryBlobReader
 					var e4 = ReadDouble();
 					var e5 = ReadDouble();
 					var eFlags = ReadInt32();
-					factory.AddCurve(new EllipticArcModifier(startIndex, e1, e2, e3, e4, e5, eFlags));
+					builder.AddCurve(new EllipticArcModifier(startIndex, e1, e2, e3, e4, e5, eFlags));
 					break;
 				default:
 					throw Error($"Unknown segment type: {curveType}");
