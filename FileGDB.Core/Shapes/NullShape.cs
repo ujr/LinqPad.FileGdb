@@ -1,6 +1,6 @@
 namespace FileGDB.Core.Shapes;
 
-public class NullShape : Shape
+public sealed class NullShape : Shape
 {
 	private NullShape() : base((uint)ShapeType.Null) { }
 
@@ -18,6 +18,6 @@ public class NullShape : Shape
 		return NullBox;
 	}
 
-	public static readonly NullShape Instance = new();
+	public static readonly NullShape Singleton = new();
 	private static readonly BoxShape NullBox = new(ShapeFlags.None, double.NaN, double.NaN, double.NaN, double.NaN);
 }

@@ -4,7 +4,8 @@ namespace FileGDB.Core.Shapes;
 
 public class EllipticArcModifier : SegmentModifier
 {
-	public override int CurveType => 5;
+	public override int CurveType => CurveTypeEllipticArc;
+
 	public double D1 { get; } // centerPoint.X | V1
 	public double D2 { get; } // centerPoint.Y | V2
 	public double D3 { get; } // rotation | fromV

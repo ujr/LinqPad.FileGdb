@@ -47,13 +47,13 @@ public abstract class Shape
 		throw new NotImplementedException();
 	}
 
-	public Shape SetBox(BoxShape box)
+	public Shape SetBox(BoxShape? box)
 	{
 		_box = box; // null is ok (box will be lazily computed)
 		return this;
 	}
 
-	public static NullShape Null => NullShape.Instance;
+	public static NullShape Null => NullShape.Singleton;
 
 	protected abstract BoxShape GetBox();
 

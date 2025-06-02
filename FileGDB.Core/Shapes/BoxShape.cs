@@ -8,7 +8,6 @@ public class BoxShape : Shape
 	public double YMin { get; }
 	public double XMax { get; }
 	public double YMax { get; }
-	// Z and M bounds are NaN if not available
 	public double ZMin { get; }
 	public double ZMax { get; }
 	public double MMin { get; }
@@ -17,8 +16,8 @@ public class BoxShape : Shape
 
 	public BoxShape(ShapeFlags flags,
 		double xmin, double ymin, double xmax, double ymax,
-		double zmin = double.NaN, double zmax = double.NaN,
-		double mmin = double.NaN, double mmax = double.NaN)
+		double zmin = DefaultZ, double zmax = DefaultZ,
+		double mmin = DefaultM, double mmax = DefaultM)
 		: base(GetShapeType(GeometryType.Envelope, flags))
 	{
 		XMin = xmin;

@@ -4,7 +4,8 @@ namespace FileGDB.Core.Shapes;
 
 public class CircularArcModifier : SegmentModifier
 {
-	public override int CurveType => 1;
+	public override int CurveType => CurveTypeCircularArc;
+
 	public double D1 { get; } // center point X | start angle
 	public double D2 { get; } // center point Y | end angle
 	public int Flags { get; } // see ext shp buf fmt
@@ -108,15 +109,15 @@ public class CircularArcModifier : SegmentModifier
 		return (r1 + r2) / 2.0; // average
 	}
 
-	private static double GetCircleFromInteriorPoint(XY startXY, XY interiorXY, XY endXY, out XY centerXY)
+	private static double GetCircleFromInteriorPoint(XY start, XY interior, XY end, out XY center)
 	{
-		if (startXY == endXY)
+		if (start == end)
 		{
-			centerXY = 0.5 * (startXY + interiorXY);
-			return GetRadius(startXY, centerXY, endXY);
+			center = 0.5 * (start + interior);
+			return GetRadius(start, center, end);
 		}
 
-		return Geometry.Circumcircle(startXY, interiorXY, endXY, out centerXY);
+		return Geometry.Circumcircle(start, interior, end, out center);
 	}
 
 	private static double CentralAngle(XY start, XY center, XY end, bool wantCW)

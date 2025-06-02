@@ -7,6 +7,12 @@ public abstract class SegmentModifier
 	public int SegmentIndex { get; }
 	public abstract int CurveType { get; }
 
+	public const int CurveTypeCircularArc = 1;
+	public const int CurveTypeLine = 2; // does not occur (is default, not a modifier)
+	public const int CurveTypeSpiral = 3; // undocumented
+	public const int CurveTypeCubicBezier = 4;
+	public const int CurveTypeEllipticArc = 5;
+
 	protected SegmentModifier(int segmentIndex)
 	{
 		SegmentIndex = segmentIndex;

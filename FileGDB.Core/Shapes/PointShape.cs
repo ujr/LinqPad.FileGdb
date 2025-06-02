@@ -11,7 +11,8 @@ public class PointShape : Shape
 	public double M { get; }
 	public int ID { get; }
 
-	public static PointShape Empty { get; } = new(double.NaN, double.NaN);
+	public PointShape(double x, double y)
+		: this(ShapeFlags.None, x, y, DefaultZ, DefaultM, DefaultID) { }
 
 	public PointShape(ShapeFlags flags, double x, double y, double z, double m, int id)
 		: base(GetShapeType(GeometryType.Point, flags))
@@ -21,18 +22,6 @@ public class PointShape : Shape
 		Z = z;
 		M = m;
 		ID = id;
-	}
-
-	public PointShape(double x, double y, double z = DefaultZ, double m = DefaultM, int id = -1)
-		: this(GuessFlags(z, m, id), x, y, z, m, id) { }
-
-	private static ShapeFlags GuessFlags(double z, double m, int id)
-	{
-		var flags = ShapeFlags.None;
-		if (!double.IsNaN(z)) flags |= ShapeFlags.HasZ;
-		if (!double.IsNaN(m)) flags |= ShapeFlags.HasM;
-		if (id >= 0) flags |= ShapeFlags.HasID;
-		return flags;
 	}
 
 	protected override BoxShape GetBox()

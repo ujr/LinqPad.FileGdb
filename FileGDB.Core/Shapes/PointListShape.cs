@@ -38,6 +38,7 @@ public abstract class PointListShape : Shape
 
 	public int NumPoints => _xys.Count;
 
+	// TODO Or make these indexers?
 	public IReadOnlyList<XY> CoordsXY => _xys;
 	public IReadOnlyList<double>? CoordsZ => _zs;
 	public IReadOnlyList<double>? CoordsM => _ms;
