@@ -1,8 +1,8 @@
 namespace FileGDB.Core;
 
 /// <summary>
-/// Shape types, as used in Shapefiles and the Geometry Blob
-/// in the File Geodatabase.
+/// Shape types, as used in Shapefiles and in the Geometry Blob
+/// of the File Geodatabase.
 /// </summary>
 /// <remarks>
 /// Names and values as for the ArcObjects esriShapeType constants,

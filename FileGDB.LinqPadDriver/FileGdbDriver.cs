@@ -6,6 +6,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using FileGDB.Core;
+using FileGDB.Core.Shapes;
 using JetBrains.Annotations;
 using LINQPad;
 using LINQPad.Extensibility.DataContext;

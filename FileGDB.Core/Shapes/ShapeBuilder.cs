@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 
-namespace FileGDB.Core;
+namespace FileGDB.Core.Shapes;
 
 /// <summary>
 /// Utility to create <see cref="ShapeBuffer"/> and
@@ -18,7 +18,7 @@ public class ShapeBuilder
 	private readonly List<double> _zs = new();
 	private readonly List<double> _ms = new();
 	private readonly List<int> _ids = new();
-	private readonly List<int> _parts = new();
+	private readonly List<int> _partVertexCounts = new();
 	private readonly List<SegmentModifier> _curves = new();
 
 	private uint _shapeType;
@@ -40,7 +40,7 @@ public class ShapeBuilder
 	public bool MayHaveCurves => ShapeBuffer.GetMayHaveCurves(_shapeType);
 
 	public int NumPoints => _xys.Count;
-	public int NumParts => _parts.Count;
+	public int NumParts => _partVertexCounts.Count;
 	public int NumCurves => _curves.Count;
 
 	public bool ValidateUnorderedSegmentModifiers { get; set; }
@@ -53,17 +53,12 @@ public class ShapeBuilder
 	{
 		_shapeType = shapeType;
 
-		//NumPoints = numPoints;
-		//NumParts = numParts;
-		//NumCurves = numCurves;
-
 		_xys.Clear();
 		_zs.Clear();
 		_ms.Clear();
 		_ids.Clear();
 
-		_parts.Clear();
-		//_parts.Add(numPoints);
+		_partVertexCounts.Clear();
 
 		_curves.Clear();
 
@@ -90,7 +85,7 @@ public class ShapeBuilder
 		//_parts[index] -= count;
 		//_parts.Insert(index, count);
 
-		_parts.Add(numPointsInPart);
+		_partVertexCounts.Add(numPointsInPart);
 	}
 
 	public void AddXY(double x, double y)
@@ -138,6 +133,80 @@ public class ShapeBuilder
 		_mmax = mmax;
 	}
 
+	public bool Validate(out string message)
+	{
+		bool valid = true;
+		message = string.Empty;
+
+		if (Type == GeometryType.Null && NumPoints > 0)
+		{
+			AddMessage(ref message, $"Null shape cannot have points but there are {NumPoints}");
+			valid = false;
+		}
+
+		if (Type == GeometryType.Point && NumPoints > 1)
+		{
+			AddMessage(ref message, $"Point shape can have at most one point but there are {NumPoints}");
+			valid = false;
+		}
+
+		if (NumCurves > 0 && !MayHaveCurves)
+		{
+			AddMessage(ref message, $"{Type} shape cannot have curves but there are {NumCurves}");
+			valid = false;
+		}
+
+		if (Type is GeometryType.Polyline or GeometryType.Polygon)
+		{
+			if (_partVertexCounts.Any(count => count < 0))
+			{
+				AddMessage(ref message, "part counts must not be negative");
+				valid = false;
+			}
+			else
+			{
+				var partSum = _partVertexCounts.Sum();
+				if (partSum != NumPoints)
+				{
+					AddMessage(ref message, $"sum over part counts ({partSum}) does not match actual point count ({NumPoints})");
+					valid = false;
+				}
+			}
+		}
+
+		if (ValidateUnorderedSegmentModifiers)
+		{
+			// nothing to do: segment modifiers may be out of order
+		}
+		else
+		{
+			for (int j = 1; j < _curves.Count; j++)
+			{
+				int prev = _curves[j - 1].SegmentIndex;
+				int current = _curves[j].SegmentIndex;
+				if (current <= prev)
+				{
+					// This is nowhere documented, but highly desirable.
+					// TODO Could sort instead... study real data: ever out of order?
+					AddMessage(ref message, "segment modifiers (curves) are not in strictly increasing order of their segment index");
+					valid = false;
+					break;
+				}
+			}
+		}
+
+		message = string.Empty;
+		return valid;
+	}
+
+	public void Validate()
+	{
+		if (!Validate(out var message))
+		{
+			throw new Exception(message);
+		}
+	}
+
 	public Shape ToShape()
 	{
 		if (Type is GeometryType.Null)
@@ -180,14 +249,16 @@ public class ShapeBuilder
 			var zs = HasZ ? TrimOrExtendWith(_zs, count, DefaultZ).ToArray() : null;
 			var ms = HasM ? TrimOrExtendWith(_ms, count, DefaultM).ToArray() : null;
 			var ids = HasID ? TrimOrExtendWith(_ids, count, DefaultID).ToArray() : null;
-			var parts = _parts.Count < 2 ? null : _parts.ToArray();
+			var parts = _partVertexCounts.Count < 2 ? null : _partVertexCounts.ToArray();
 			var curves = _curves.Count < 1 ? null : _curves.ToArray();
 
-			var box = new BoxShape(flags, _xmin, _ymin, _xmax, _ymax, _zmin, _zmax, _mmin, _mmax);
-			var shape = Type is GeometryType.Polyline
-				? new PolylineShape(flags, xys, zs, ms, ids, parts, curves).SetBox(box)
-				: new PolygonShape(flags, xys, zs, ms, ids, parts, curves).SetBox(box);
+			Shape shape = Type is GeometryType.Polyline
+				? new PolylineShape(flags, xys, zs, ms, ids, parts, curves)
+				: new PolygonShape(flags, xys, zs, ms, ids, parts, curves);
 
+			var box = new BoxShape(flags, _xmin, _ymin, _xmax, _ymax, _zmin, _zmax, _mmin, _mmax);
+
+			shape.SetBox(box);
 			return shape;
 		}
 
@@ -318,7 +389,7 @@ public class ShapeBuilder
 			// Empty polyline/polygon: 4x NaN for box, 0 numParts, 0 numPoints (total 44 bytes)
 			//   plus 2x NaN for Zmin,Zmax (if hasZ), plus 2x NaN for Mmin,Mmax (if hasM)
 
-			int numParts = _parts.Count;
+			int numParts = _partVertexCounts.Count;
 			int numPoints = _xys.Count;
 			bool mayHaveCurves = ShapeBuffer.GetMayHaveCurves(_shapeType);
 
@@ -327,7 +398,7 @@ public class ShapeBuilder
 			if (mayHaveCurves)
 			{
 				length += 4; // num segment modifiers
-				length += GetSegmentModifierBufferSize(_curves);
+				length += _curves.Sum(c => c.GetShapeBufferSize());
 			}
 
 			var bytes = new byte[length];
@@ -343,7 +414,7 @@ public class ShapeBuilder
 			offset += ShapeBuffer.WriteInt32(numParts, bytes, offset);
 			offset += ShapeBuffer.WriteInt32(numPoints, bytes, offset);
 
-			offset += WritePartIndices(_parts, bytes, offset);
+			offset += WritePartIndices(_partVertexCounts, bytes, offset);
 
 			offset += WriteXYs(_xys, numPoints, bytes, offset);
 
@@ -380,10 +451,7 @@ public class ShapeBuilder
 		throw new NotSupportedException($"Shape of type {Type} is not supported");
 	}
 
-	private static int GetSegmentModifierBufferSize(IEnumerable<SegmentModifier> curves)
-	{
-		return curves.Sum(curve => curve.GetShapeBufferSize());
-	}
+	#region Private utils
 
 	private static int WritePartIndices(List<int>? parts, byte[] bytes, int offset)
 	{
@@ -501,80 +569,6 @@ public class ShapeBuilder
 		return offset - startOffset;
 	}
 
-	public bool Validate(out string message)
-	{
-		bool valid = true;
-		message = string.Empty;
-
-		if (Type == GeometryType.Null && NumPoints > 0)
-		{
-			AddMessage(ref message, $"Null shape cannot have points but there are {NumPoints}");
-			valid = false;
-		}
-
-		if (Type == GeometryType.Point && NumPoints > 1)
-		{
-			AddMessage(ref message, $"Point shape can have at most one point but there are {NumPoints}");
-			valid = false;
-		}
-
-		if (NumCurves > 0 && !MayHaveCurves)
-		{
-			AddMessage(ref message, $"{Type} shape cannot have curves but there are {NumCurves}");
-			valid = false;
-		}
-
-		if (Type is GeometryType.Polyline or GeometryType.Polygon)
-		{
-			if (_parts.Any(count => count < 0))
-			{
-				AddMessage(ref message, "part counts must not be negative");
-				valid = false;
-			}
-			else
-			{
-				var partSum = _parts.Sum();
-				if (partSum != NumPoints)
-				{
-					AddMessage(ref message, $"sum over part counts ({partSum}) does not match actual point count ({NumPoints})");
-					valid = false;
-				}
-			}
-		}
-
-		if (ValidateUnorderedSegmentModifiers)
-		{
-			// nothing to do: segment modifiers may be out of order
-		}
-		else
-		{
-			for (int j = 1; j < _curves.Count; j++)
-			{
-				int prev = _curves[j - 1].SegmentIndex;
-				int current = _curves[j].SegmentIndex;
-				if (current <= prev)
-				{
-					// This is nowhere documented, but highly desirable.
-					// TODO Could sort instead... study real data: ever out of order?
-					AddMessage(ref message, "segment modifiers (curves) are not in strictly increasing order of their segment index");
-					valid = false;
-					break;
-				}
-			}
-		}
-
-		message = string.Empty;
-		return valid;
-	}
-
-	public void Validate()
-	{
-		if (!Validate(out var message))
-		{
-			throw new Exception(message);
-		}
-	}
-
 	private static void AddMessage(ref string accumulator, string message)
 	{
 		if (string.IsNullOrEmpty(message)) return;
@@ -611,4 +605,6 @@ public class ShapeBuilder
 		}
 		return list;
 	}
+
+	#endregion
 }

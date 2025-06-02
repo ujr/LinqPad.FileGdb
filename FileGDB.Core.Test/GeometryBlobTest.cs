@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
+using FileGDB.Core.Shapes;
 using Xunit;
 using Xunit.Abstractions;
 
