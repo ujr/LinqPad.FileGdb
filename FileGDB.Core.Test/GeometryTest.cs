@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using Xunit;
 
 namespace FileGDB.Core.Test;
@@ -128,5 +129,27 @@ public class GeometryTest
 		Assert.Equal(2 * Math.PI, Geometry.CentralAngle(a, o, a, true), 9);
 
 		// TODO much more: different quadrants, degenerate cases
+	}
+
+	[Fact]
+	public void CanCompensatedSummation()
+	{
+		// These values are from the "Kahan summation algorithm"
+		// Wikipedia article; the correct sum is 2, but ordinary
+		// double precision addition (in given order) yields zero:
+
+		var values = new[] { 1.0, 1e100, 1.0, -1e100 };
+
+		var summation = new CompensatedSummation();
+		foreach (var value in values)
+		{
+			summation.Add(value);
+		}
+
+		double compensated = summation.Result;
+		double plain = values.Sum();
+
+		Assert.Equal(2.0, compensated); // mathematically correct
+		Assert.Equal(0.0, plain); // wrong due to limited precision
 	}
 }
