@@ -8,6 +8,7 @@ using System.Text;
 using FileGDB.Core;
 using FileGDB.Core.Geometry;
 using FileGDB.Core.Shapes;
+using FileGDB.Core.WKT;
 using JetBrains.Annotations;
 using LINQPad;
 using LINQPad.Extensibility.DataContext;
@@ -120,7 +121,18 @@ public class FileGdbDriver : DynamicDataContextDriver
 	public override IEnumerable<string> GetNamespacesToAdd(IConnectionInfo cxInfo)
 	{
 		//Debugger.Launch();
-		yield return typeof(Core.FileGDB).Namespace!;
+		return new[]
+			{
+				typeof(Core.FileGDB).Namespace,
+				typeof(GeometryUtils).Namespace,
+				typeof(Shape).Namespace,
+				typeof(ShapeExtensions).Namespace,
+				typeof(ShapeBufferExtensions).Namespace
+			}
+			// Namespace could be null:
+			.Where(ns => ns is not null)
+			// LINQPad probably handles duplicates, but better safe than sorry:
+			.Distinct()!;
 	}
 
 	#region Output formatting
