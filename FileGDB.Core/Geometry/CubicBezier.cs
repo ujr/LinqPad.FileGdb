@@ -136,12 +136,6 @@ public static class CubicBezier
 	public static void Split(XY p0, XY p1, XY p2, XY p3, double t1, double t2,
 		out XY r0, out XY r1, out XY r2, out XY r3)
 	{
-		if (Math.Abs(t2 - t1) < double.Epsilon)
-		{
-			r0 = r1 = r2 = r3 = Compute(p0, p1, p2, p3, t1);
-			return;
-		}
-
 		bool reverse = t1 > t2;
 
 		if (reverse)
@@ -149,10 +143,57 @@ public static class CubicBezier
 			(t1, t2) = (t2, t1);
 		}
 
-		// split at t1, then the right part again at "t2" (adjusted)
-		Split(p0, p1, p2, p3, t1, out _, out _, out r0, out var q1, out var q2);
-		double s = (t2 - t1) / (1 - t1); // TODO handle t1==1 (div 0)
-		Split(r0, q1, q2, p3, s, out r1, out r2, out r3, out _, out _);
+		if (t1 < 0)
+		{
+			t1 = 0;
+			if (t2 < 0) t2 = 0;
+		}
+
+		if (t2 > 1)
+		{
+			t2 = 1;
+			if (t1 > 1) t1 = 1;
+		}
+
+		if (Math.Abs(t2 - t1) < double.Epsilon)
+		{
+			r0 = r1 = r2 = r3 = Compute(p0, p1, p2, p3, t1);
+			return;
+		}
+
+		// Split original curve at t1, then right part again at adjusted t2:
+		// - Split(p0, p1, p2, p3, t1, out _, out _, out r0, out var q1, out var q2)
+		// - t2 := (t2 - t1) / (1 - t1)
+		// - Split(r0, q1, q2, p3, t2, out r1, out r2, out r3, out _, out _)
+		
+		var s1 = 1 - t1;
+		var a1 = s1 * p0 + t1 * p1;
+		var b1 = s1 * p1 + t1 * p2;
+		var c1 = s1 * p2 + t1 * p3;
+		var d1 = s1 * a1 + t1 * b1;
+		var e1 = s1 * b1 + t1 * c1;
+		var f1 = s1 * d1 + t1 * e1;
+		// Left of t1: B(p0,a1,d1,f1) (ignore)
+		// Right of t1: B(f1,e1,c1,p3) (split again below)
+
+		// Adjust t2 to make it relative to right part:
+		t2 = (t2 - t1) / (1 - t1);
+		// no div 0 here because t1=1 was handled above
+
+		var s2 = 1 - t2;
+		var a2 = s2 * f1 + t2 * e1;
+		var b2 = s2 * e1 + t2 * c1;
+		var c2 = s2 * c1 + t2 * p3;
+		var d2 = s2 * a2 + t2 * b2;
+		var e2 = s2 * b2 + t2 * c2;
+		var f2 = s2 * d2 + t2 * e2;
+		// Left of adjusted t2: B(f1,a2,d2,f2) (our result)
+		// Right of adjusted t2: B(f2,e2,c2,p3) (ignore)
+
+		r0 = f1;
+		r1 = a2;
+		r2 = d2;
+		r3 = f2;
 
 		if (reverse)
 		{

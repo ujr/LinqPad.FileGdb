@@ -218,9 +218,9 @@ public class CubicBezierTest
 		var p2 = new XY(1, 1);
 		var p3 = new XY(1, 0);
 
+		// normal case: 0 <= t1 < t2 <= 1
 		CubicBezier.Split(p0, p1, p2, p3, 0.25, 0.75, out XY r0, out XY r1, out XY r2, out XY r3);
 
-		// normal case: 0 <= t1 < t2 <= t1
 		var start = CubicBezier.Compute(p0, p1, p2, p3, 0.25);
 		var end = CubicBezier.Compute(p0, p1, p2, p3, 0.75);
 		Assert.Equal(start, r0);
@@ -228,7 +228,7 @@ public class CubicBezierTest
 		Assert.Equal(new XY(0.65625, 0.8125), r2);
 		Assert.Equal(end, r3);
 
-		// if t1 > t2 the result curve runs "backwards":
+		// reverse case: 0 <= t2 < t1 <= 1
 		CubicBezier.Split(p0, p1, p2, p3, 0.75, 0.25, out r0, out r1, out r2, out r3);
 
 		Assert.Equal(r0, end);
@@ -236,23 +236,71 @@ public class CubicBezierTest
 		Assert.Equal(new XY(0.34375, 0.8125), r2);
 		Assert.Equal(r3, start);
 
-		// if t1 equals t2 then r0=r1=r2=r3=B(t1)
+		// the point case: t1==t2  (expect r0=r1=r2=r3=B(t1)
 		CubicBezier.Split(p0, p1, p2, p3, 0.5, 0.5, out r0, out r1, out r2, out r3);
 
-		var ps = CubicBezier.Compute(p0, p1, p2, p3, 0.5);
-		Assert.Equal(ps, r0);
-		Assert.Equal(ps, r1);
-		Assert.Equal(ps, r2);
-		Assert.Equal(ps, r3);
+		var p = CubicBezier.Compute(p0, p1, p2, p3, 0.5);
+		Assert.Equal(p, r0);
+		Assert.Equal(p, r1);
+		Assert.Equal(p, r2);
+		Assert.Equal(p, r3);
+
+		// the beyond case:  1 <= t1 <= t2  (expect r0=r1=r2=r3=p3)
+		CubicBezier.Split(p0, p1, p2, p3, 1.0, 1.2, out r0, out r1, out r2, out r3);
+
+		Assert.Equal(p3, r0);
+		Assert.Equal(p3, r1);
+		Assert.Equal(p3, r2);
+		Assert.Equal(p3, r3);
+
+		// the below case:  t1 <= t2 <= 0  (expect r0=r1=r2=r3=p0)
+		CubicBezier.Split(p0, p1, p2, p3, -0.5, 0.0, out r0, out r1, out r2, out r3);
+
+		Assert.Equal(p0, r0);
+		Assert.Equal(p0, r1);
+		Assert.Equal(p0, r2);
+		Assert.Equal(p0, r3);
+
+		// the across case:  t1 < 0 < t2 <= 1
+		CubicBezier.Split(p0, p1, p2, p3, -0.5, 0.5, out r0, out r1, out r2, out r3);
+
+		Assert.Equal(p0, r0);
+		Assert.Equal(new XY(0.0, 0.5), r1);
+		Assert.Equal(new XY(0.25, 0.75), r2);
+		Assert.Equal(new XY(0.5, 0.75), r3);
+
+		// the other across case:  0 <= t1 < 1 < t2
+		CubicBezier.Split(p0, p1, p2, p3, 0.5, 1.5, out r0, out r1, out r2, out r3);
+
+		Assert.Equal(new XY(0.5,0.75), r0);
+		Assert.Equal(new XY(0.75, 0.75), r1);
+		Assert.Equal(new XY(1.0, 0.5), r2);
+		Assert.Equal(new XY(1.0, 0.0), r3);
+
+		// the full case:  t1 <= 0 < 1 <= t2  (expect the original curve)
+		CubicBezier.Split(p0, p1, p2, p3, -0.5, 1.5, out r0, out r1, out r2, out r3);
+
+		Assert.Equal(p0, r0);
+		Assert.Equal(p1, r1);
+		Assert.Equal(p2, r2);
+		Assert.Equal(p3, r3);
+
+		// the full reverse case:  t2 <= 0 < 1 <= t1  (expect the original curve reversed)
+		CubicBezier.Split(p0, p1, p2, p3, 1.0, 0.0, out r0, out r1, out r2, out r3);
+
+		Assert.Equal(p3, r0);
+		Assert.Equal(p2, r1);
+		Assert.Equal(p1, r2);
+		Assert.Equal(p0, r3);
 	}
 
 	[Fact]
 	public void CanArcTime()
 	{
-		var p00 = new XY(0, 0);
-		var p11 = new XY(1, 1);
-		var p22 = new XY(2, 2);
-		var p33 = new XY(3, 3);
+		var p00 = new XY(0, 0);  //  :     3
+		var p11 = new XY(1, 1);  //  :   2
+		var p22 = new XY(2, 2);  //  : 1
+		var p33 = new XY(3, 3);  //  0.......
 
 		// To begin with: a straight line (requires no recursion):
 		double t = CubicBezier.ArcTime(p00, p11, p22, p33, Math.Sqrt(2));
