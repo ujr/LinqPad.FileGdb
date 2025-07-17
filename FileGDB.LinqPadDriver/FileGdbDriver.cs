@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -254,8 +255,9 @@ public class FileGdbDriver : DynamicDataContextDriver
 		{
 			if (objectToWrite is TableBase tableBase)
 			{
-				var rows = tableBase.Table.RowCount;
-				var label = rows == 1 ? "1 row" : $"{rows} rows";
+				//var rows = tableBase.Table.RowCount;
+				//var label = rows == 1 ? "1 row" : $"{rows} rows";
+				var label = tableBase.TableName;
 				objectToWrite = Util.OnDemand(label, () => tableBase);
 			}
 		}
@@ -429,10 +431,11 @@ public class FileGdbDriver : DynamicDataContextDriver
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using FileGDB.LinqPadDriver;
 
 namespace $$Namespace$$;
 
-public class $$TypeName$$ : FileGDB.LinqPadDriver.DriverBase
+public class $$TypeName$$ : DriverBase
 {
   public $$TypeName$$(string gdbFolderPath, bool debugMode) : base(gdbFolderPath, debugMode)
   {
@@ -441,63 +444,34 @@ public class $$TypeName$$ : FileGDB.LinqPadDriver.DriverBase
 
   public TableContainer Tables { get; }
 
-  public class TableContainer : FileGDB.LinqPadDriver.TableContainerBase
+  public class TableContainer : TableContainerBase
   {
     public TableContainer(FileGDB.Core.FileGDB gdb, bool debugMode) : base(gdb, debugMode) {}
 
     // public @FooTable @Foo => GetTable<@FooTable>(""Foo"");
-    $$TableProperties$$
+$$TableProperties$$
   }
 
-  $$PerTableClasses$$
-
-  public override void Dispose()
-  {
-    Tables.Dispose();
-  }
+$$PerTableClasses$$
 }
 ";
 
-		const string perTableTemplate = @"
-public class $$TableName$$_Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<$$TableName$$_Table.Row>
+		const string perTableTemplate2 = @"
+public class $$TableName$$_Table : TableBase<$$TableName$$_Table.Row>
 {
-  public $$TableName$$_Table(FileGDB.Core.Table table, bool debugMode)
-    : base(table, debugMode) { }
+	public $$TableName$$_Table(FileGDB.Core.FileGDB gdb, string tableName, bool debugMode = false)
+		: base(gdb, tableName, debugMode) { }
 
-  IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+	protected override Row CreateRow()
+	{
+		return new Row();
+	}
 
-  public IEnumerator<Row> GetEnumerator() => Search().GetEnumerator();
-
-  public IEnumerable<Row> Search()
-  {
-    var cursor = ReadRows();
-    var values = (FileGDB.Core.IRowValues) cursor;
-
-    while (cursor.Step())
-    {
-      var row = new Row();
-      //row.Bar = (BarType)values.GetValue(""Bar"");
-      $$FieldAssignments$$
-      yield return row;
-    }
-  }
-
-  public Row GetRow(long oid)
-  {
-    var values = ReadRow(oid);
-    if (values is null) return null;
-
-    var row = new Row();
-    //row.Bar = (BarType)values.GetValue(""Bar"");
-    $$FieldAssignments$$
-    return row;
-  }
-
-  public class Row : FileGDB.LinqPadDriver.RowBase
-  {
-    //public BarType Bar { get; set; }
-    $$FieldProperties$$
-  }
+	public class Row : RowBase
+	{
+		// property per field, e.g., public BarType Bar { get; set; }
+$$FieldProperties$$
+	}
 }
 ";
 
@@ -525,7 +499,7 @@ public class $$TableName$$_Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<
 			{
 				using var table = gdb.OpenTable(tableName);
 
-				var fieldAssignments = new StringBuilder();
+				//var fieldAssignments = new StringBuilder();
 				var fieldProperties = new StringBuilder();
 
 				foreach (var field in table.Fields)
@@ -536,13 +510,15 @@ public class $$TableName$$_Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<
 					var fieldType = Table.GetDataType(field.Type);
 					var fieldTypeName = GetPropertyTypeName(fieldType);
 
-					fieldAssignments.AppendLine($"row.@{propName} = ({fieldTypeName}) values.GetValue(\"{escaped}\");");
+					//fieldAssignments.AppendLine($"row.@{propName} = ({fieldTypeName}) values.GetValue(\"{escaped}\");");
+
+					fieldProperties.AppendLine($"[DatabaseField(\"{escaped}\")]");
 					fieldProperties.AppendLine($"public {fieldTypeName} @{propName} {{ get; set; }}");
 				}
 
-				var perTableCode = perTableTemplate
+				var perTableCode = perTableTemplate2
 					.Replace("$$TableName$$", tableClassName)
-					.Replace("$$FieldAssignments$$", fieldAssignments.ToString())
+					//.Replace("$$FieldAssignments$$", fieldAssignments.ToString())
 					.Replace("$$FieldProperties$$", fieldProperties.ToString());
 				tableClasses.AppendLine(perTableCode);
 			}
@@ -550,9 +526,9 @@ public class $$TableName$$_Table : FileGDB.LinqPadDriver.TableBase, IEnumerable<
 			{
 				// Could not open table: assume it has no fields and generate
 				// code accordingly; the error will pop up again when enumerated
-				var perTableCode = perTableTemplate
+				var perTableCode = perTableTemplate2
 					.Replace("$$TableName$$", tableClassName)
-					.Replace("$$FieldAssignments$$", string.Empty)
+					//.Replace("$$FieldAssignments$$", string.Empty)
 					.Replace("$$FieldProperties$$", string.Empty);
 				tableClasses.AppendLine(perTableCode);
 			}
@@ -807,104 +783,174 @@ public abstract class RowBase
 	// just tagging
 }
 
-[UsedImplicitly]
 public abstract class TableBase
 {
-	private readonly Table? _table;
-	private readonly bool _debugMode;
-	private RowResult? _rowResult;
+	private readonly Core.FileGDB _gdb;
+	private RowResult? _rowResult; // cache
+	private IReadOnlyList<FieldInfo>? _fields; // cache
 
-	protected TableBase(Table table, bool debugMode)
+	protected TableBase(Core.FileGDB gdb, string tableName, bool debugMode)
 	{
-		_table = table ?? throw new ArgumentNullException(nameof(table));
-		_debugMode = debugMode;
+		_gdb = gdb ?? throw new ArgumentNullException(nameof(gdb));
+		TableName = tableName ?? throw new ArgumentNullException(nameof(tableName));
+		DebugMode = debugMode;
 	}
 
 	[PublicAPI]
-	protected RowsResult ReadRows()
+	public string TableName { get; }
+
+	protected bool DebugMode { get; }
+
+	[PublicAPI]
+	public IReadOnlyList<FieldInfo> Fields => GetFields();
+
+	private IReadOnlyList<FieldInfo> GetFields()
 	{
-		if (_debugMode)
+		if (_fields is null)
 		{
-			Debugger.Launch();
+			using var table = OpenTable();
+
+			_fields = table.Fields;
 		}
 
-		return Table.ReadRows(null, null);
+		return _fields;
 	}
 
-	[PublicAPI]
 	protected RowResult? ReadRow(long oid)
 	{
-		if (_debugMode)
+		if (DebugMode)
 		{
 			Debugger.Launch();
 		}
 
-		var values = Table.ReadRow(oid);
+		using var table = OpenTable();
+		var values = table.ReadRow(oid);
 		if (values is null) return null;
 
-		_rowResult ??= new RowResult(Table.Fields);
+		_rowResult ??= new RowResult(table.Fields);
 		_rowResult.SetValues(values);
 
 		return _rowResult;
 	}
 
-	[PublicAPI] // just a convenient abbreviation
-	public IReadOnlyList<FieldInfo> Fields => Table.Fields;
+	protected Table OpenTable()
+	{
+		return _gdb.OpenTable(TableName);
+	}
 
-	[PublicAPI]
-	public Table Table =>
-		_table ?? throw new InvalidOperationException("This table wrapper has not been initialized");
+	protected static T? Populate<T>(T row, IRowValues? cursor) where T : RowBase
+	{
+		if (cursor is null)
+			return null;
+		if (row is null)
+			throw new ArgumentNullException(nameof(row));
+
+		var type = row.GetType();
+
+		const BindingFlags binding = BindingFlags.Public | BindingFlags.Instance;
+		var properties = type.GetProperties(binding);
+
+		foreach (var property in properties)
+		{
+			if (!property.CanRead || !property.CanWrite) continue;
+
+			var attribute = property.GetCustomAttribute<DatabaseFieldAttribute>();
+			if (attribute is null) continue;
+
+			var value = cursor.GetValue(attribute.FieldName);
+
+			property.SetValue(row, value);
+		}
+
+		return row;
+	}
 }
 
-public abstract class TableContainerBase : IDisposable
+[UsedImplicitly]
+public abstract class TableBase<T> : TableBase, IEnumerable<T> where T : RowBase
+{
+	protected TableBase(Core.FileGDB gdb, string tableName, bool debugMode)
+		: base(gdb, tableName, debugMode) { }
+
+	IEnumerator IEnumerable.GetEnumerator()
+	{
+		return GetEnumerator();
+	}
+
+	public IEnumerator<T> GetEnumerator()
+	{
+		if (DebugMode)
+		{
+			Debugger.Launch();
+		}
+
+		var table = OpenTable();
+
+		try
+		{
+			var rows = table.ReadRows(null, null);
+
+			while (rows.Step())
+			{
+				var row = CreateRow();
+				yield return Populate(row, rows)!;
+			}
+		}
+		finally
+		{
+			// Code here ends up in the generated enumerator's Dispose method
+			// and will be called by foreach; dispose the table so we don't
+			// leave any files open after enumeration:
+			table.Dispose();
+		}
+	}
+
+	[PublicAPI]
+	public T? GetRow(long oid)
+	{
+		var row = CreateRow();
+		var values = ReadRow(oid);
+		return Populate(row, values);
+	}
+
+	protected abstract T CreateRow();
+}
+
+// Generate code like this for each table in database:
+//public class FooTable : TableBase<FooTable.Row>
+//{
+//	public FooTable(Core.FileGDB gdb, string tableName, bool debugMode = false)
+//		: base(gdb, tableName, debugMode) { }
+//
+//	protected override Row CreateRow()
+//	{
+//		return new Row();
+//	}
+//
+//	public class Row : RowBase
+//	{
+//		// Property per field...
+//		public int Foo { get; set; }
+//	}
+//}
+
+public abstract class TableContainerBase
 {
 	private readonly Core.FileGDB _gdb;
 	private readonly bool _debugMode;
-	private readonly IDictionary<string, Table> _tableCache;
 
 	protected TableContainerBase(Core.FileGDB gdb, bool debugMode)
 	{
 		_gdb = gdb ?? throw new ArgumentNullException(nameof(gdb));
 		_debugMode = debugMode;
-		_tableCache = new Dictionary<string, Table>();
 	}
 
 	[PublicAPI]
 	protected T GetTable<T>(string tableName) where T : TableBase
 	{
-		var table = GetRawTable(tableName);
-		var args = new object[] { table, _debugMode };
+		var args = new object[] { _gdb, tableName, _debugMode };
 		var wrapper = (T?) Activator.CreateInstance(typeof(T), args, null);
 		return wrapper ?? throw new Exception("Got null from Activator");
-	}
-
-	private Table GetRawTable(string tableName)
-	{
-		if (! _tableCache.TryGetValue(tableName, out var table))
-		{
-			table = _gdb.OpenTable(tableName);
-			_tableCache.Add(tableName, table);
-		}
-
-		return table;
-	}
-
-	public void Dispose()
-	{
-		List<Table> list;
-
-		lock (_tableCache)
-		{
-			list = _tableCache.Values.ToList();
-			_tableCache.Clear();
-		}
-
-		foreach (var table in list)
-		{
-			table.Dispose();
-		}
-
-		GC.SuppressFinalize(this);
 	}
 }
 
@@ -942,5 +988,20 @@ public abstract class DriverBase : IDisposable
 		return Debugger.Launch();
 	}
 
-	public abstract void Dispose();
+	public void Dispose()
+	{
+		GDB.Dispose();
+	}
+}
+
+[UsedImplicitly]
+[AttributeUsage(AttributeTargets.Property)]
+public class DatabaseFieldAttribute : Attribute
+{
+	public DatabaseFieldAttribute(string fieldName)
+	{
+		FieldName = fieldName ?? throw new ArgumentNullException(nameof(fieldName));
+	}
+
+	public string FieldName { get; }
 }

@@ -17,17 +17,21 @@ public readonly struct CatalogEntry
 
 	//public bool Missing => ID <= 0 || Name == null;
 
+	/// <remarks>
+	/// Tables whose names begin with "GDB_" are considered system tables.
+	/// </remarks>
 	public bool IsSystemTable()
 	{
 		if (Name is null) return false;
-		// Tables whose names begin with "GDB_" are considered system tables:
 		return Name.StartsWith("GDB_", StringComparison.OrdinalIgnoreCase);
 	}
 
+	/// <remarks>
+	/// Tables whose names do not begin with "GDB_" are considered user tables.
+	/// </remarks>
 	public bool IsUserTable()
 	{
 		if (Name is null) return false;
-		// Tables whose names do not start with "GDB_" are considered user tables:
 		return !Name.StartsWith("GDB_", StringComparison.OrdinalIgnoreCase);
 	}
 
