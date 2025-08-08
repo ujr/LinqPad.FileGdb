@@ -21,15 +21,15 @@ software that created or upgraded the Geodatabase; within the
 data file for a File Geodatabase table is a **version** field
 that reads **3** for 9.x and **4** for 10.x File GDBs.
 
-Quoting from ArcGIS Pro documentation at
-<https://pro.arcgis.com/en/pro-app/latest/help/data/geodatabases/overview/client-geodatabase-compatibility.htm>
-
-> The version for file geodatabases has not changed since \[ArcGIS] 10.1.
-> The version for mobile geodatabases \[SQLite] has not changed since ArcGIS Pro 2.7.
-
 Since ArcGIS Pro 3.2 the Object IDs can optionally be 64bit
 integers (before only 32bit). Such tables report **6** as
 their version.
+
+Quoting from ArcGIS Pro documentation at
+<https://pro.arcgis.com/en/pro-app/latest/help/data/geodatabases/overview/client-geodatabase-compatibility.htm>
+
+> The version for file geodatabases has not changed since \[ArcGIS] 10.1.  
+> The version for mobile geodatabases \[SQLite] has not changed since ArcGIS Pro 2.7.
 
 ## Limits
 
@@ -139,6 +139,20 @@ Additional keywords may be added in later releases.
 - GEOMETRY_AND_BLOB_OUTOFLINE:
   Stores data up to 1 TB in size. Text is stored in UTF8 format.
   Stores both geometry and BLOB attributes in files separate from the rest of the attributes.
+
+## Locking
+
+No known documentation, but empirically ArcGIS creates five types of locks:
+`*.sr.lock` (shared schema lock), `*.rd.lock` (shared data lock), `*.sw.lock`
+(exclusive schema lock?), `*.wr.lock` (exclusive data lock?), `*ed.lock`
+(created for all datasets when edit session starts, deleted when edit session
+ends).
+
+Using the Pro SDK:
+
+- `var cursor = featureClass.Search()` creates a shared read lock (`.rd.lock`)
+  on *featureClass*
+- `cursor.Dispose()` releases this lock (deletes the lock file)
 
 ## Resources
 
