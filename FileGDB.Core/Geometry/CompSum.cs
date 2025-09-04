@@ -1,17 +1,22 @@
 using System;
+using System.Globalization;
 
 namespace FileGDB.Core.Geometry;
 
-public class CompensatedSummation
+public struct CompSum
 {
 	private double _sum;
 	private double _compensation;
 
-	public CompensatedSummation() => Reset();
+	private CompSum(double value = 0.0)
+	{
+		_sum = value;
+		_compensation = 0.0;
+	}
 
-	public double Result => _sum + _compensation;
+	private double Result => _sum + _compensation;
 
-	public void Add(double value)
+	private void Add(double value)
 	{
 		// Kahan summation, improved version by Neumaier, see
 		// https://en.wikipedia.org/wiki/Kahan_summation_algorithm
@@ -34,9 +39,23 @@ public class CompensatedSummation
 		_sum = t;
 	}
 
-	public void Reset(double startValue = 0.0)
+	public static implicit operator double(CompSum s) => s.Result;
+	public static implicit operator CompSum(double v) => new(v);
+
+	public static CompSum operator +(CompSum s, double v)
 	{
-		_sum = startValue;
-		_compensation = 0.0;
+		s.Add(v);
+		return s;
+	}
+
+	public static CompSum operator -(CompSum s, double v)
+	{
+		s.Add(-v);
+		return s;
+	}
+
+	public override string ToString()
+	{
+		return Result.ToString(CultureInfo.InvariantCulture);
 	}
 }
