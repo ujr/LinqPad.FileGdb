@@ -57,6 +57,11 @@ public readonly struct XY : IEquatable<XY>
 		return new XY(s * pair.X, s * pair.Y);
 	}
 
+	public static XY operator /(XY pair, double s)
+	{
+		return new XY(pair.X / s, pair.Y / s);
+	}
+
 	public static bool operator ==(XY a, XY b)
 	{
 		// ReSharper disable CompareOfFloatsByEqualityOperator
