@@ -19,34 +19,57 @@ public abstract class TableBase
 {
 	private readonly Core.FileGDB _gdb;
 	private RowResult? _rowResult; // cache
-	private IReadOnlyList<FieldInfo>? _fields; // cache
 
 	protected TableBase(Core.FileGDB gdb, string tableName, bool debugMode)
 	{
 		_gdb = gdb ?? throw new ArgumentNullException(nameof(gdb));
 		TableName = tableName ?? throw new ArgumentNullException(nameof(tableName));
 		DebugMode = debugMode;
-	}
 
-	[PublicAPI]
-	public string TableName { get; }
+		using var table = OpenTable();
+
+		BaseName = table.BaseName;
+		RowCount = table.RowCount;
+		MaxObjectID = table.MaxObjectID;
+		GeometryType = table.GeometryType;
+		HasZ = table.HasZ;
+		HasM = table.HasM;
+		Fields = table.Fields;
+		Indexes = table.Indexes;
+		Version = table.Version;
+	}
 
 	protected bool DebugMode { get; }
 
 	[PublicAPI]
-	public IReadOnlyList<FieldInfo> Fields => GetFields();
+	public string TableName { get; }
 
-	private IReadOnlyList<FieldInfo> GetFields()
-	{
-		if (_fields is null)
-		{
-			using var table = OpenTable();
+	[PublicAPI]
+	public string BaseName { get; }
 
-			_fields = table.Fields;
-		}
+	[PublicAPI]
+	public long RowCount { get; }
 
-		return _fields;
-	}
+	[PublicAPI]
+	public long MaxObjectID { get; }
+
+	[PublicAPI]
+	public GeometryType GeometryType { get; }
+
+	[PublicAPI]
+	public bool HasZ { get; }
+
+	[PublicAPI]
+	public bool HasM { get; }
+
+	[PublicAPI]
+	public int Version { get; }
+
+	[PublicAPI]
+	public IReadOnlyList<FieldInfo> Fields { get; }
+
+	[PublicAPI]
+	public IReadOnlyList<IndexInfo> Indexes { get; }
 
 	protected RowResult? ReadRow(long oid)
 	{
