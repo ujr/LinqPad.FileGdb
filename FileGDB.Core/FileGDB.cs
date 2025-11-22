@@ -64,9 +64,14 @@ public sealed class FileGDB : IDisposable
 	public Table OpenTable(string tableName)
 	{
 		var entry = GetCatalogEntry(tableName);
-		if (entry.ID <= 0)
+		if (entry is null || entry.ID <= 0)
 			throw Error($"No such table: {tableName}");
 		return OpenTable(entry.ID);
+	}
+
+	public static string GetTableBaseName(int tableID)
+	{
+		return string.Format("a{0:x8}", tableID);
 	}
 
 	#region Private methods
@@ -88,20 +93,20 @@ public sealed class FileGDB : IDisposable
 				if (name is null)
 					throw Error("Catalog contains NULL name");
 				var format = Convert.ToInt32(row[2] ?? 0);
-				list.Add(new CatalogEntry(oid, name, format));
+				list.Add(new CatalogEntry(this, oid, name, format));
 			}
 		}
 
 		SetCatalog(list);
 	}
 
-	private CatalogEntry GetCatalogEntry(string tableName)
+	private CatalogEntry? GetCatalogEntry(string tableName)
 	{
 		var catalog = GetCatalog();
 
 		var entry = catalog.FirstOrDefault(entry => entry.Name == tableName);
 
-		if (entry.ID <= 0)
+		if (entry is null || entry.ID <= 0)
 		{
 			const StringComparison ignoreCase = StringComparison.OrdinalIgnoreCase;
 			entry = catalog.FirstOrDefault(e => string.Equals(e.Name, tableName, ignoreCase));
@@ -127,11 +132,6 @@ public sealed class FileGDB : IDisposable
 		{
 			_catalog = new ReadOnlyCollection<CatalogEntry>(list);
 		}
-	}
-
-	private static string GetTableBaseName(int tableID) // TODO public?
-	{
-		return string.Format("a{0:x8}", tableID);
 	}
 
 	private static Exception Error(string? message)

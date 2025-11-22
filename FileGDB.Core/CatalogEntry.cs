@@ -2,17 +2,20 @@ using System;
 
 namespace FileGDB.Core;
 
-public readonly struct CatalogEntry
+public class CatalogEntry
 {
 	public int ID { get; }
 	public string Name { get; }
 	public int Format { get; }
 
-	public CatalogEntry(int id, string name, int format = 0)
+	private readonly FileGDB _gdb;
+
+	public CatalogEntry(FileGDB gdb, int id, string name, int format = 0)
 	{
 		ID = id;
 		Name = name ?? throw new ArgumentNullException(nameof(name));
 		Format = format;
+		_gdb = gdb ?? throw new ArgumentNullException(nameof(gdb));
 	}
 
 	//public bool Missing => ID <= 0 || Name == null;
@@ -22,7 +25,6 @@ public readonly struct CatalogEntry
 	/// </remarks>
 	public bool IsSystemTable()
 	{
-		if (Name is null) return false;
 		return Name.StartsWith("GDB_", StringComparison.OrdinalIgnoreCase);
 	}
 
@@ -31,8 +33,23 @@ public readonly struct CatalogEntry
 	/// </remarks>
 	public bool IsUserTable()
 	{
-		if (Name is null) return false;
 		return !Name.StartsWith("GDB_", StringComparison.OrdinalIgnoreCase);
+	}
+
+	public Table OpenTable()
+	{
+		return _gdb.OpenTable(ID);
+	}
+
+	public bool TableExists()
+	{
+		return TableExists(out _);
+	}
+
+	public bool TableExists(out string reason)
+	{
+		var baseName = FileGDB.GetTableBaseName(ID);
+		return Table.Exists(baseName, _gdb.FolderPath, out reason);
 	}
 
 	public override string ToString()

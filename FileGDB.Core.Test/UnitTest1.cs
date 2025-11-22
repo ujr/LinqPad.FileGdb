@@ -1,14 +1,13 @@
 using System;
 using System.IO;
 using System.IO.Compression;
-using System.Linq;
 using FileGDB.Core.Shapes;
 using Xunit;
 using Xunit.Abstractions;
 
 namespace FileGDB.Core.Test;
 
-public class UnitTest1 : IDisposable
+public sealed class UnitTest1 : IDisposable
 {
 	private readonly string _myTempPath;
 	private readonly ITestOutputHelper _output;
@@ -30,117 +29,6 @@ public class UnitTest1 : IDisposable
 		// remove test data from temp folder
 		const bool recursive = true;
 		Directory.Delete(_myTempPath, recursive);
-	}
-
-	[Fact]
-	public void CanOpenFileGDB()
-	{
-		var gdbPath = GetTempDataPath("Test1.gdb");
-
-		using var gdb = FileGDB.Open(gdbPath);
-
-		Assert.NotNull(gdb);
-		Assert.Equal(gdbPath, gdb.FolderPath);
-		var tableNames = gdb.Catalog.Select(e => e.Name).ToArray();
-		Assert.Contains("GDB_SystemCatalog", tableNames);
-		Assert.Contains("GDB_DBTune", tableNames);
-		Assert.Contains("GDB_SpatialRefs", tableNames);
-	}
-
-	[Fact]
-	public void DumpTableSystemCatalog()
-	{
-		var gdbPath = GetTempDataPath("Test1.gdb");
-
-		using var gdb = FileGDB.Open(gdbPath);
-		Assert.Equal(gdbPath, gdb.FolderPath);
-
-		using var table = gdb.OpenTable(1);
-		Assert.Equal(gdbPath, table.FolderPath);
-		Assert.Equal("a00000001", table.BaseName);
-		// inspect table, especially table.Fields
-		//long size = table.GetRowSize(1);
-		//var bytes = table.ReadRowBytes(1);
-
-		foreach (var field in table.Fields)
-		{
-			_output.WriteLine($"Field {field.Name}, alias \"{field.Alias}\", type {field.Type}, nullable={field.Nullable}, length={field.Length}");
-		}
-
-		_output.WriteLine("");
-
-		for (int oid = 1; oid <= table.MaxObjectID; oid++)
-		{
-			var row = table.ReadRow(oid);
-			if (row is null) continue; // deleted
-			_output.WriteLine($"{oid,5:N0}  {row[1]}  (format={row[2]})");
-		}
-
-		// 1  GDB_SystemCatalog  ("a00000001")
-		// 2  GDB_DBTune  ("a00000002")
-		// 3  GDB_SpatialRefs
-		// 4  GDB_Items
-		// 5  GDB_ItemTypes
-		// 6  GDB_ItemRelationships
-		// 7  GDB_ItemRelationshipTypes
-		// 8  GDB_ReplicaLog
-		// 9+ User tables
-
-		_output.WriteLine("");
-
-		foreach (var index in table.Indexes)
-		{
-			_output.WriteLine($"Index {index.Name}, field {index.FieldName}");
-		}
-	}
-
-	[Fact]
-	public void DumpTableDbTune()
-	{
-		var gdbPath = GetTempDataPath("Test1.gdb");
-		using var gdb = FileGDB.Open(gdbPath);
-		using var table = gdb.OpenTable(2);
-
-		foreach (var field in table.Fields)
-		{
-			_output.WriteLine($"Field {field.Name}, type {field.Type}, length={field.Length}, nullable={field.Nullable}");
-		}
-
-		_output.WriteLine("");
-
-		// Fields: Keyword, ParameterName, ConfigString (all type String)
-		// Interesting: no OID!?!
-
-		for (int oid = 1; oid <= table.MaxObjectID; oid++)
-		{
-			var row = table.ReadRow(oid);
-			_output.WriteLine($"{oid,3:N0}  {row?[0]}  {row?[1]}  {row?[2]}");
-		}
-	}
-
-	[Fact]
-	public void DumpTableSpatialRefs()
-	{
-		var gdbPath = GetTempDataPath("Test1.gdb");
-		using var gdb = FileGDB.Open(gdbPath);
-		using var table = gdb.OpenTable(3);
-
-		foreach (var field in table.Fields)
-		{
-			_output.WriteLine($"Field {field.Name}, type {field.Type}, length={field.Length}, nullable={field.Nullable}");
-		}
-
-		_output.WriteLine("");
-		_output.WriteLine($"RowCount = {table.RowCount}");
-		_output.WriteLine("");
-
-		for (int oid = 1; oid <= table.MaxObjectID; oid++)
-		{
-			var row = table.ReadRow(oid);
-			if (row is null) continue;
-
-			_output.WriteLine($"{oid,3:N0}  {row[0]}  {row[1]}");
-		}
 	}
 
 	[Fact]

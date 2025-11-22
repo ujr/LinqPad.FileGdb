@@ -154,6 +154,28 @@ public sealed class Table : IDisposable
 		return indexFilePath;
 	}
 
+	public static bool Exists(string baseName, string folderPath, out string reason)
+	{
+		var table = new Table(baseName, folderPath);
+
+		var dataPath = table.GetDataFilePath();
+		if (!File.Exists(dataPath))
+		{
+			reason = $"Data file {dataPath} does not exist";
+			return false;
+		}
+
+		var indexPath = table.GetIndexFilePath();
+		if (!File.Exists(indexPath))
+		{
+			reason = $"Index file {indexPath} does not exist";
+			return false;
+		}
+
+		reason = string.Empty;
+		return true;
+	}
+
 	public static Table Open(string baseName, string folderPath)
 	{
 		var table = new Table(baseName, folderPath);
