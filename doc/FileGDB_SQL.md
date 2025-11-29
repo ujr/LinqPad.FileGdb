@@ -1,7 +1,7 @@
 # SQL in the File GDB
 
-The File Geodatabase supports a subset of SQL.
-This is ducumented by Esri in
+Esri software supports a subset of SQL against
+a File Geodatabase. This is ducumented by Esri in
 
 - the page *File geodatabases SQL reference* in the ArcGS Pro
   documentation at
@@ -244,5 +244,4 @@ data-type ::= [VAR]CHAR(length)|
   REAL|DOUBLE PRECISION|FLOAT[(precision)]|
   DATE|TIME|TIMESTAMP|[VAR]BINARY
 default-value ::= literal | NULL
-
 ```
