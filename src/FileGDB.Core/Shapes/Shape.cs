@@ -97,16 +97,16 @@ public abstract class Shape
 		}
 
 		if ((flags & ShapeFlags.HasZ) != 0)
-			result |= (uint)ShapeBuffer.Flags.HasZ;
+			result |= (uint)ShapeModifiers.HasZs;
 		if ((flags & ShapeFlags.HasM) != 0)
-			result |= (uint)ShapeBuffer.Flags.HasM;
+			result |= (uint)ShapeModifiers.HasMs;
 		if ((flags & ShapeFlags.HasID) != 0)
-			result |= (uint)ShapeBuffer.Flags.HasID;
+			result |= (uint)ShapeModifiers.HasIDs;
 		// MultiPatch flags: Materials, Normals, Textures, PartIDs
 
-		if (type == GeometryType.Polyline || type == GeometryType.Polygon)
+		if (type is GeometryType.Polyline or GeometryType.Polygon)
 		{
-			result |= (uint)ShapeBuffer.Flags.HasCurves; // TODO unsure
+			result |= (uint)ShapeModifiers.HasCurves; // TODO unsure
 		}
 
 		return result;

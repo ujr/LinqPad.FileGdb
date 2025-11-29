@@ -9,24 +9,6 @@ namespace FileGDB.Core;
 /// </summary>
 public class ShapeBuffer
 {
-	/// <summary>
-	/// Flags if the shape is of one of the "General" types
-	/// </summary>
-	public enum Flags : uint
-	{
-		HasZ =        0x80000000,
-		HasM =        0x40000000,
-		HasCurves =   0x20000000,
-		HasID =       0x10000000,
-		HasNormals =   0x8000000,
-		HasTextures =  0x4000000,
-		HasPartIDs =   0x2000000,
-		HasMaterials = 0x1000000,
-		IsCompressed =  0x800000, // from FileGDBCore.h of FileGDB API, not in ext shp buf fmt white paper
-		BasicTypeMask = 0xFF,
-		ShapeFlagsMask = 0xFF000000 // in FileGDBCore.h this is -16777216
-	}
-
 	private readonly byte[] _bytes;
 	private readonly uint _shapeType;
 
@@ -574,7 +556,7 @@ public class ShapeBuffer
 
 	public static bool GetHasZ(uint shapeType)
 	{
-		switch ((ShapeType)(shapeType & (uint)Flags.BasicTypeMask))
+		switch ((ShapeType)(shapeType & (uint)ShapeModifiers.BasicTypeMask))
 		{
 			case ShapeType.PointZ:
 			case ShapeType.PointZM:
@@ -592,7 +574,7 @@ public class ShapeBuffer
 			case ShapeType.GeneralPoint:
 			case ShapeType.GeneralMultipoint:
 			case ShapeType.GeneralMultiPatch:
-				return (shapeType & (uint)Flags.HasZ) != 0U;
+				return (shapeType & (uint)ShapeModifiers.HasZs) != 0U;
 			default:
 				return false;
 		}
@@ -600,7 +582,7 @@ public class ShapeBuffer
 
 	public static bool GetHasM(uint shapeType)
 	{
-		switch ((ShapeType)(shapeType & (uint)Flags.BasicTypeMask))
+		switch ((ShapeType)(shapeType & (uint)ShapeModifiers.BasicTypeMask))
 		{
 			case ShapeType.PointM:
 			case ShapeType.PointZM:
@@ -618,7 +600,7 @@ public class ShapeBuffer
 			case ShapeType.GeneralPoint:
 			case ShapeType.GeneralMultipoint:
 			case ShapeType.GeneralMultiPatch:
-				return (shapeType & (uint)Flags.HasM) != 0U;
+				return (shapeType & (uint)ShapeModifiers.HasMs) != 0U;
 			default:
 				return false;
 		}
@@ -626,7 +608,7 @@ public class ShapeBuffer
 
 	public static bool GetHasID(uint shapeType)
 	{
-		return (shapeType & (uint)Flags.HasID) != 0;
+		return (shapeType & (uint)ShapeModifiers.HasIDs) != 0;
 	}
 
 	/// <returns>True iff the given shape type can have curves</returns>
@@ -637,7 +619,7 @@ public class ShapeBuffer
 	{
 		// special case mentioned in Ext Shp Buf Fmt p.4:
 		var basicType = (ShapeType)(shapeType & 255);
-		var shapeFlags = shapeType & (uint)Flags.ShapeFlagsMask;
+		var shapeFlags = shapeType & (uint)ShapeModifiers.ModifierMask;
 		var noModifierBits = shapeFlags == 0;
 
 		if (basicType is ShapeType.GeneralPolygon or ShapeType.GeneralPolyline &&
@@ -650,7 +632,7 @@ public class ShapeBuffer
 		// only Polyline and Polygon can have curves:
 		if (geomType is GeometryType.Polyline or GeometryType.Polygon)
 		{
-			return (shapeType & (uint)Flags.HasCurves) != 0;
+			return (shapeType & (uint)ShapeModifiers.HasCurves) != 0;
 		}
 
 		return false;
@@ -688,10 +670,10 @@ public class ShapeBuffer
 	public static uint GetShapeType(GeometryType geometryType, bool hasZ, bool hasM, bool hasID, bool hasCurves = false)
 	{
 		var shapeType = (uint) GetShapeType(geometryType);
-		if (hasZ) shapeType |= (uint)Flags.HasZ;
-		if (hasM) shapeType |= (uint)Flags.HasM;
-		if (hasID) shapeType |= (uint)Flags.HasID;
-		if (hasCurves) shapeType |= (uint)Flags.HasCurves;
+		if (hasZ) shapeType |= (uint)ShapeModifiers.HasZs;
+		if (hasM) shapeType |= (uint)ShapeModifiers.HasMs;
+		if (hasID) shapeType |= (uint)ShapeModifiers.HasIDs;
+		if (hasCurves) shapeType |= (uint)ShapeModifiers.HasCurves;
 		return shapeType;
 	}
 
