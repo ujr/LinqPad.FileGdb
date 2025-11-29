@@ -788,27 +788,29 @@ public class GeometryBlobReader
 				throw Error($"Curve start index {vu} is too big for this API");
 			int startIndex = (int)vu;
 			
-			ulong curveType = ReadVarUnsigned();
-			switch (curveType)
+			ulong segTypeValue = ReadVarUnsigned();
+			var segmentType = (SegmentType)(segTypeValue & 255);
+
+			switch (segmentType)
 			{
-				case 1: // circular arc
+				case SegmentType.CircularArc:
 					var d1 = ReadDouble();
 					var d2 = ReadDouble();
 					var cFlags = ReadInt32();
 					builder.AddCurve(new CircularArcModifier(startIndex, d1, d2, cFlags));
 					break;
-				case 2: // linear segment
-					throw Error($"Segment type {curveType} (line) should not occur");
-				case 3: // spiral arc
-					throw Error($"Segment type {curveType} (spiral arc) is not supported");
-				case 4: // bezier arc
+				case SegmentType.StraightLine:
+					throw Error($"Segment type {segmentType} (line) should not occur");
+				case SegmentType.Spiral:
+					throw Error($"Segment type {segmentType} (spiral arc) is not supported");
+				case SegmentType.CubicBezier:
 					var x1 = ReadDouble();
 					var y1 = ReadDouble();
 					var x2 = ReadDouble();
 					var y2 = ReadDouble();
 					builder.AddCurve(new CubicBezierModifier(startIndex, x1, y1, x2, y2));
 					break;
-				case 5: // elliptic arc
+				case SegmentType.EllipticArc:
 					var e1 = ReadDouble();
 					var e2 = ReadDouble();
 					var e3 = ReadDouble();
@@ -818,7 +820,7 @@ public class GeometryBlobReader
 					builder.AddCurve(new EllipticArcModifier(startIndex, e1, e2, e3, e4, e5, eFlags));
 					break;
 				default:
-					throw Error($"Unknown segment type: {curveType}");
+					throw Error($"Unknown segment type: {segTypeValue}");
 			}
 		}
 	}
