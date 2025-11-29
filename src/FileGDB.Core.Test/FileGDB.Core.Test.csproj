@@ -29,52 +29,52 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\data\shpbuf\LineCurves.bin" Link="TestData\shpbuf\LineCurves.bin">
+    <None Include="..\..\data\shpbuf\LineCurves.bin" Link="TestData\shpbuf\LineCurves.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\data\shpbuf\LineLinear.bin" Link="TestData\shpbuf\LineLinear.bin">
+    <None Include="..\..\data\shpbuf\LineLinear.bin" Link="TestData\shpbuf\LineLinear.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\data\shpbuf\LineMultipart.bin" Link="TestData\shpbuf\LineMultipart.bin">
+    <None Include="..\..\data\shpbuf\LineMultipart.bin" Link="TestData\shpbuf\LineMultipart.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\data\shpbuf\Multipoint.bin" Link="TestData\shpbuf\Multipoint.bin">
+    <None Include="..\..\data\shpbuf\Multipoint.bin" Link="TestData\shpbuf\Multipoint.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\data\shpbuf\MultipointZM.bin" Link="TestData\shpbuf\MultipointZM.bin">
+    <None Include="..\..\data\shpbuf\MultipointZM.bin" Link="TestData\shpbuf\MultipointZM.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\data\shpbuf\Point.bin" Link="TestData\shpbuf\Point.bin">
+    <None Include="..\..\data\shpbuf\Point.bin" Link="TestData\shpbuf\Point.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\data\shpbuf\PointID.bin" Link="TestData\shpbuf\PointID.bin">
+    <None Include="..\..\data\shpbuf\PointID.bin" Link="TestData\shpbuf\PointID.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\data\shpbuf\PointZM.bin" Link="TestData\shpbuf\PointZM.bin">
+    <None Include="..\..\data\shpbuf\PointZM.bin" Link="TestData\shpbuf\PointZM.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\data\shpbuf\PointZMID.bin" Link="TestData\shpbuf\PointZMID.bin">
+    <None Include="..\..\data\shpbuf\PointZMID.bin" Link="TestData\shpbuf\PointZMID.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\data\shpbuf\PolygonCircle.bin" Link="TestData\shpbuf\PolygonCircle.bin">
+    <None Include="..\..\data\shpbuf\PolygonCircle.bin" Link="TestData\shpbuf\PolygonCircle.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\data\shpbuf\PolygonEllipse.bin" Link="TestData\shpbuf\PolygonEllipse.bin">
+    <None Include="..\..\data\shpbuf\PolygonEllipse.bin" Link="TestData\shpbuf\PolygonEllipse.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\data\shpbuf\PolygonMultipartZ.bin" Link="TestData\shpbuf\PolygonMultipartZ.bin">
+    <None Include="..\..\data\shpbuf\PolygonMultipartZ.bin" Link="TestData\shpbuf\PolygonMultipartZ.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\data\shpbuf\PolygonZ.bin" Link="TestData\shpbuf\PolygonZ.bin">
+    <None Include="..\..\data\shpbuf\PolygonZ.bin" Link="TestData\shpbuf\PolygonZ.bin">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\data\Test1.gdb.zip" Link="TestData\Test1.gdb.zip">
+    <None Include="..\..\data\Test1.gdb.zip" Link="TestData\Test1.gdb.zip">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\data\TestGeom.gdb.zip" Link="TestData\TestGeom.gdb.zip">
+    <None Include="..\..\data\TestGeom.gdb.zip" Link="TestData\TestGeom.gdb.zip">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
-    <None Include="..\data\TestPro32.gdb.zip" Link="TestData\TestPro32.gdb.zip">
+    <None Include="..\..\data\TestPro32.gdb.zip" Link="TestData\TestPro32.gdb.zip">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

@@ -3,7 +3,7 @@
 /**/bin/
 
 # VS settings
-/.vs/
+/src/.vs/
 /.vscode/
 
 # NuGet packages
