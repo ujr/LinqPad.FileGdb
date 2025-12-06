@@ -143,6 +143,12 @@ $$FieldProperties$$
 		return fieldProperties.Trim().ToString();
 	}
 
+	/// <summary>
+	/// Make the given <paramref name="name"/> a valid C# identifier
+	/// by replacing invalid characters with '_' (or prepending '_'
+	/// if <paramref name="name"/> does not begin with a letter).
+	/// Caller's duty to avoid clashes with reserved words (prepend '@').
+	/// </summary>
 	private static string MakeIdentifier(string name)
 	{
 		// must start with '_' or letter
@@ -170,31 +176,51 @@ $$FieldProperties$$
 		return sb.ToString();
 	}
 
-	private static string EscapeForString(string name)
+	/// <summary>
+	/// Escape the given <paramref name="text"/> such that it is
+	/// valid as a C# string (quotes must be provided by caller)
+	/// (surrogate pairs are not handled).
+	/// </summary>
+	private static string? EscapeForString(string? text)
 	{
+		if (text is null) return null;
 		var sb = new StringBuilder();
+		EscapeForString(text, sb);
+		return sb.ToString();
+	}
 
-		foreach (char c in name)
+	/// <summary>See <see cref="EscapeForString(string)"/></summary>
+	private static void EscapeForString(string? text, StringBuilder sb)
+	{
+		if (sb is null)
+			throw new ArgumentNullException(nameof(sb));
+
+		foreach (char c in text ?? string.Empty)
 		{
-			switch (c)
+			if (char.IsControl(c))
 			{
-				case '\\': sb.Append("\\\\"); break;
-				case '"': sb.Append("\\\""); break;
-				case '\0': sb.Append("\\0"); break;
-				case '\a': sb.Append("\\a"); break;
-				case '\b': sb.Append("\\b"); break;
-				case '\f': sb.Append("\\f"); break;
-				case '\n': sb.Append("\\n"); break;
-				case '\r': sb.Append("\\r"); break;
-				case '\t': sb.Append("\\t"); break;
-				case '\v': sb.Append("\\v"); break;
-				default:
-					sb.Append(c);
-					break;
+				sb.Append($"\\u{(int)c:x4}");
+			}
+			else
+			{
+				switch (c)
+				{
+					case '\\': sb.Append("\\\\"); break;
+					case '"': sb.Append("\\\""); break;
+					case '\0': sb.Append("\\0"); break;
+					case '\a': sb.Append("\\a"); break;
+					case '\b': sb.Append("\\b"); break;
+					case '\f': sb.Append("\\f"); break;
+					case '\n': sb.Append("\\n"); break;
+					case '\r': sb.Append("\\r"); break;
+					case '\t': sb.Append("\\t"); break;
+					case '\v': sb.Append("\\v"); break;
+					default:
+						sb.Append(c);
+						break;
+				}
 			}
 		}
-
-		return sb.ToString();
 	}
 
 	private static string GetPropertyTypeName(Type fieldType)

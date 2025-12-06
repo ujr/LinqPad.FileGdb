@@ -99,14 +99,14 @@ public class FileGdbDriver : DynamicDataContextDriver
 		if (cxInfo is null)
 			throw new ArgumentNullException(nameof(cxInfo));
 
-		var gdbFolderPath = cxInfo.GetGdbFolderPath();
-		if (gdbFolderPath is null)
-			throw new InvalidOperationException("No GDB folder path in connection info");
+		var gdbFolderPath = cxInfo.GetGdbFolderPath() ??
+		                    throw new InvalidOperationException("No GDB folder path in connection info");
+		var debugMode = cxInfo.GetDebugMode();
 
 		return new object[]
 		{
 			gdbFolderPath,
-			cxInfo.GetDebugMode()
+			debugMode
 		};
 	}
 
@@ -176,125 +176,114 @@ public class FileGdbDriver : DynamicDataContextDriver
 
 	public override void PreprocessObjectToWrite(ref object objectToWrite, ObjectGraphInfo info)
 	{
+		var parent = info.ParentHierarchy.FirstOrDefault();
+
 		if (objectToWrite is GeometryBlob blob)
 		{
-			var parent = info.ParentHierarchy.FirstOrDefault();
+			// Collapse GeometryBlob if a field in a row:
 			objectToWrite = parent is RowBase
-				? Util.OnDemand(blob.ShapeType.ToString(), () => blob)
+				? OnDemand(blob, blob.ShapeType.ToString())
 				: blob;
-			//objectToWrite = FormatGeometryBlob(blob);
 		}
-		else if (info.ParentHierarchy.FirstOrDefault() is GeometryBlob)
+		else if (objectToWrite is CatalogEntry entry)
+		{
+			objectToWrite = parent is null ? entry : PreprocessCatalogEntry(entry);
+		}
+		else if (objectToWrite is FieldInfo fieldInfo)
+		{
+			objectToWrite = parent is null ? fieldInfo : PreprocessFieldInfo(fieldInfo);
+		}
+		else if (objectToWrite is IndexInfo indexInfo)
+		{
+			objectToWrite = parent is null ? indexInfo : PreprocessIndexInfo(indexInfo);
+		}
+		else if (parent is GeometryBlob)
 		{
 			if (objectToWrite is IReadOnlyList<byte> blobBytes)
 			{
-				var description = FormatBytes(blobBytes, 8, true);
-				objectToWrite = Util.OnDemand(description, () => blobBytes);
+				var label = FormatBytes(blobBytes, 8, true);
+				objectToWrite = OnDemand(blobBytes, label);
 			}
 			else if (objectToWrite is ShapeBuffer shapeBuffer)
 			{
-				objectToWrite = Util.OnDemand(shapeBuffer.GeometryType.ToString(), () => shapeBuffer);
+				var label = shapeBuffer.GeometryType.ToString();
+				objectToWrite = OnDemand(shapeBuffer, label);
 			}
 			else if (objectToWrite is Shape shape)
 			{
-				objectToWrite = Util.OnDemand(shape.GeometryType.ToString(), () => shape);
+				var label = shape.GeometryType.ToString();
+				objectToWrite = OnDemand(shape, label);
 			}
 		}
-		else if (info.ParentHierarchy.FirstOrDefault() is ShapeBuffer)
+		else if (parent is ShapeBuffer)
 		{
 			if (objectToWrite is IReadOnlyList<byte> bytes)
 			{
-				var text = FormatBytes(bytes, 12);
-				objectToWrite = Util.OnDemand(text, () => bytes);
+				var label = FormatBytes(bytes, 12);
+				objectToWrite = OnDemand(bytes, label);
 			}
 		}
-		else if (info.ParentHierarchy.FirstOrDefault() is Shape)
+		else if (parent is Shape)
 		{
 			if (objectToWrite is BoxShape box)
 			{
-				objectToWrite = Util.OnDemand("Box", () => box);
+				const string label = "Box";
+				objectToWrite = OnDemand(box, label);
 			}
 			else if (objectToWrite is IReadOnlyList<XY> coordsXY)
 			{
-				var description = coordsXY.Count == 1 ? "1 pair" : $"{coordsXY.Count} pairs";
-				objectToWrite = Util.OnDemand(description, () => coordsXY);
+				var label = FormatCount(coordsXY.Count, "pair");
+				objectToWrite = OnDemand(coordsXY, label);
 			}
 			else if (objectToWrite is IReadOnlyList<double> ords)
 			{
-				var description = ords.Count == 1 ? "1 double" : $"{ords.Count} doubles";
-				objectToWrite = Util.OnDemand(description, () => ords);
+				var label = FormatCount(ords.Count, "double");
+				objectToWrite = OnDemand(ords, label);
 			}
 			else if (objectToWrite is IReadOnlyList<int> ids)
 			{
-				var description = ids.Count == 1 ? "1 ID" : $"{ids.Count} IDs";
-				objectToWrite = Util.OnDemand(description, () => ids);
+				var label = FormatCount(ids.Count, "ID", "IDs");
+				objectToWrite = OnDemand(ids, label);
 			}
 			else if (objectToWrite is IReadOnlyList<PointShape> points)
 			{
-				var description = points.Count == 1 ? "1 point" : $"{points.Count} points";
-				objectToWrite = Util.OnDemand(description, () => points);
+				var label = FormatCount(points.Count, "point");
+				objectToWrite = OnDemand(points, label);
 			}
 			else if (objectToWrite is IReadOnlyList<Shape> parts)
 			{
-				var description = parts.Count == 1 ? "1 part" : $"{parts.Count} parts";
-				objectToWrite = Util.OnDemand(description, () => parts);
+				var label = FormatCount(parts.Count, "part");
+				objectToWrite = OnDemand(parts, label);
 			}
 			else if (objectToWrite is IReadOnlyList<SegmentModifier> curves)
 			{
-				var description = curves.Count == 1 ? "1 curve" : $"{curves.Count} curves";
-				objectToWrite = Util.OnDemand(description, () => curves);
+				var label = FormatCount(curves.Count, "curve");
+				objectToWrite = OnDemand(curves, label);
 			}
 		}
-		else if (info.ParentHierarchy.FirstOrDefault() is TableBase)
+		else if (parent is TableBase || parent is Table)
 		{
-			if (objectToWrite is ICollection<FieldInfo> fieldInfos)
+			if (objectToWrite is IReadOnlyList<FieldInfo> fieldInfos)
 			{
-				var description = fieldInfos.Count == 1 ? "1 field" : $"{fieldInfos.Count} fields";
-				objectToWrite = Util.OnDemand(description, () => fieldInfos);
+				var label = FormatCount(fieldInfos.Count, "field");
+				objectToWrite = OnDemand(fieldInfos, label);
 			}
-			else if (objectToWrite is ICollection<IndexInfo> indexInfos)
+			else if (objectToWrite is IReadOnlyList<IndexInfo> indexInfos)
 			{
-				var description = indexInfos.Count == 1 ? "1 index" : $"{indexInfos.Count} indices";
-				objectToWrite = Util.OnDemand(description, () => indexInfos);
+				var label = FormatCount(indexInfos.Count, "index", "indices");
+				objectToWrite = OnDemand(indexInfos, label);
 			}
 			else if (objectToWrite is Table.InternalInfo internals)
 			{
-				objectToWrite = Util.OnDemand("Internals", () => internals);
+				objectToWrite = OnDemand(internals, "Internals");
 			}
 		}
-		else if (info.ParentHierarchy.FirstOrDefault() is Table)
-		{
-			if (objectToWrite is ICollection<FieldInfo> fieldInfos)
-			{
-				var description = fieldInfos.Count == 1 ? "1 field" : $"{fieldInfos.Count} fields";
-				objectToWrite = Util.OnDemand(description, () => fieldInfos);
-			}
-			else if (objectToWrite is ICollection<IndexInfo> indexInfos)
-			{
-				var description = indexInfos.Count == 1 ? "1 index" : $"{indexInfos.Count} indices";
-				objectToWrite = Util.OnDemand(description, () => indexInfos);
-			}
-			else if (objectToWrite is Table.InternalInfo internals)
-			{
-				objectToWrite = Util.OnDemand("Internals", () => internals);
-			}
-		}
-		else if (info.ParentHierarchy.FirstOrDefault() is FieldInfo)
-		{
-			if (objectToWrite is GeometryDef geometryDef)
-			{
-				var description = Utils.GetDisplayName(geometryDef);
-				objectToWrite = Util.OnDemand(description, () => geometryDef);
-			}
-		}
-		else if (info.ParentHierarchy.FirstOrDefault() is TableContainerBase)
+		else if (parent is TableContainerBase)
 		{
 			if (objectToWrite is TableBase tableBase)
 			{
-				//var rows = tableBase.Table.RowCount;
-				//var label = rows == 1 ? "1 row" : $"{rows} rows";
 				var label = tableBase.TableName;
-				objectToWrite = Util.OnDemand(label, () => tableBase);
+				objectToWrite = OnDemand(tableBase, label); // TODO or a Link
 			}
 		}
 
@@ -332,6 +321,152 @@ public class FileGdbDriver : DynamicDataContextDriver
 		}
 
 		return sb.ToString();
+	}
+
+	private static object PreprocessCatalogEntry(CatalogEntry? catalogEntry)
+	{
+		if (catalogEntry is null) return null!;
+
+		// Reorder properties, link to open the table
+
+		return new
+		{
+			catalogEntry.ID,
+			catalogEntry.Name,
+			catalogEntry.Format,
+			Table = Util.OnDemand<object>("Open", delegate
+			{
+				try
+				{
+					return catalogEntry.OpenTable();
+				}
+				catch (Exception ex)
+				{
+					return ex;
+				}
+			})
+		};
+	}
+
+	private static object PreprocessFieldInfo(FieldInfo? fieldInfo)
+	{
+		if (fieldInfo is null) return null!;
+
+		// Reorder properties and make GeometryDef and RasterDef lazy:
+
+		return new
+		{
+			fieldInfo.Type,
+			fieldInfo.Name,
+			fieldInfo.Alias,
+			fieldInfo.Nullable,
+			fieldInfo.Required,
+			fieldInfo.Editable,
+			fieldInfo.Length,
+			GeometryDef = OnDemand(fieldInfo.GeometryDef),
+			RasterDef = OnDemand(fieldInfo.RasterDef),
+			fieldInfo.Size,
+			fieldInfo.Flags
+		};
+	}
+
+	private static object PreprocessIndexInfo(IndexInfo? indexInfo)
+	{
+		if (indexInfo is null) return null!;
+
+		// Reorder properties:
+
+		return new
+		{
+			indexInfo.Name,
+			indexInfo.FieldName,
+			indexInfo.IndexType,
+			FileName = Util.WithStyle(indexInfo.FileName, "color:gray;")
+		};
+	}
+
+	private static string FormatCount(int count, string singular, string? plural = null)
+	{
+		if (string.IsNullOrEmpty(singular))
+			return count.ToString();
+
+		if (count == 1)
+			return $"1 {singular}";
+
+		plural ??= Pluralize(singular);
+
+		return $"{count} {plural}";
+	}
+
+	private static string Pluralize(string word)
+	{
+		if (string.IsNullOrEmpty(word))
+			return word;
+
+		int n = word.Length;
+		char e1 = n > 0 ? word[n - 1] : '$'; // last letter
+		char e2 = n > 1 ? word[n - 2] : '$'; // second to last
+
+		// Cases like "fifty" => "fifties" but not "joy" (vowel)
+		const string vowels = "aeiou";
+		if (e1 == 'y' && !vowels.Contains(e2))
+			return string.Concat(word.AsSpan(0, n - 1), "ies");
+
+		// Cases like "boss" and "buzz" and "bash"
+		if (e1 == 's' || e1 == 'x' || e1 == 'z' || (e1 == 'h' && (e2 == 'c' || e2 == 's')))
+			return word + "es";
+
+		// All other cases:
+		return word + "s";
+	}
+
+	private static DumpContainer OnDemand<T>(T value, string? label = null)
+	{
+		if (value is null) return null!;
+		label ??= GetLabelText(value);
+		return Util.OnDemand(label, () => value);
+	}
+
+	private static string? GetLabelText(object? obj)
+	{
+		if (obj is null) return null;
+		if (obj is GeometryDef geometryDef)
+			return GetLabelText(geometryDef);
+		if (obj is RasterDef rasterDef)
+			return GetLabelText(rasterDef);
+		return Convert.ToString(obj);
+	}
+
+	private static string GetLabelText(GeometryDef? geometryDef)
+	{
+		if (geometryDef is null) return null!;
+
+		var sb = new StringBuilder();
+		sb.Append(geometryDef.GeometryType);
+
+		if (geometryDef.HasZ || geometryDef.HasM)
+		{
+			sb.Append(' ');
+
+			if (geometryDef.HasZ)
+			{
+				sb.Append('Z');
+			}
+
+			if (geometryDef.HasM)
+			{
+				sb.Append('M');
+			}
+		}
+
+		return sb.ToString();
+	}
+
+	private static string GetLabelText(RasterDef? rasterDef)
+	{
+		if (rasterDef is null) return null!;
+
+		return rasterDef.RasterColumn ?? string.Empty;
 	}
 
 	#endregion
