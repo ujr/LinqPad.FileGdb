@@ -6,6 +6,7 @@ namespace FileGDB.Core;
 
 /// <summary>
 /// An Esri Extended Shape Buffer formatted byte array
+/// with convenient read-only accessors.
 /// </summary>
 public class ShapeBuffer
 {
@@ -21,8 +22,6 @@ public class ShapeBuffer
 		_bytes = bytes ?? throw new ArgumentNullException(nameof(bytes));
 		_shapeType = _bytes.Length < 4 ? 0 : unchecked((uint)ReadInt32(0));
 	}
-
-	public int Length => _bytes.Length;
 
 	public IReadOnlyList<byte> Bytes => _bytes;
 

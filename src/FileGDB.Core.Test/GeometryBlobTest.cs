@@ -551,7 +551,7 @@ public class GeometryBlobTest : IDisposable
 		if (actual is null)
 			throw new ArgumentNullException(nameof(actual));
 
-		Assert.Equal(expected.Length, actual.Length);
+		Assert.Equal(expected.Length, actual.Bytes.Count);
 
 		// It seems Pro's ToEsriShape() writes general types with flags,
 		// whereas the FGDB stores "classic" types (e.g. PolygonZ)

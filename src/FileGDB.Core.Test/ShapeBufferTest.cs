@@ -13,7 +13,7 @@ public class ShapeBufferTest
 		var bytes = GetBytesPointEmpty();
 		var buffer = new ShapeBuffer(bytes);
 
-		Assert.Equal(20, buffer.Length);
+		Assert.Equal(20, buffer.Bytes.Count);
 		Assert.Equal(ShapeType.GeneralPoint, buffer.ShapeType);
 		Assert.Equal(GeometryType.Point, buffer.GeometryType);
 		Assert.False(buffer.HasZ);
@@ -39,7 +39,7 @@ public class ShapeBufferTest
 		var bytes = GetBytesPointEmptyZMID();
 		var buffer = new ShapeBuffer(bytes);
 
-		Assert.Equal(40, buffer.Length);
+		Assert.Equal(40, buffer.Bytes.Count);
 		Assert.Equal(ShapeType.GeneralPoint, buffer.ShapeType);
 		Assert.Equal(GeometryType.Point, buffer.GeometryType);
 		Assert.True(buffer.HasZ);
@@ -65,7 +65,7 @@ public class ShapeBufferTest
 		var bytes = GetBytesPolylineZM1();
 		var buffer = new ShapeBuffer(bytes);
 
-		Assert.Equal(296, buffer.Length);
+		Assert.Equal(296, buffer.Bytes.Count);
 		Assert.Equal(ShapeType.GeneralPolyline, buffer.ShapeType);
 		Assert.Equal(GeometryType.Polyline, buffer.GeometryType);
 		Assert.True(buffer.HasZ);
@@ -87,7 +87,7 @@ public class ShapeBufferTest
 		var bytes = GetBytesPolylineZM2();
 		var buffer = new ShapeBuffer(bytes);
 
-		Assert.Equal(280, buffer.Length);
+		Assert.Equal(280, buffer.Bytes.Count);
 		Assert.Equal(ShapeType.GeneralPolyline, buffer.ShapeType);
 		Assert.Equal(GeometryType.Polyline, buffer.GeometryType);
 		Assert.True(buffer.HasZ);
@@ -110,7 +110,7 @@ public class ShapeBufferTest
 		var bytes = GetBytesPointXY();
 		var buffer = new ShapeBuffer(bytes);
 
-		Assert.Equal(20, buffer.Length);
+		Assert.Equal(20, buffer.Bytes.Count);
 		Assert.Equal(ShapeType.GeneralPoint, buffer.ShapeType);
 		Assert.Equal(GeometryType.Point, buffer.GeometryType);
 		Assert.False(buffer.HasZ);
@@ -135,7 +135,7 @@ public class ShapeBufferTest
 		var bytes = GetBytesMultipointID();
 		var buffer = new ShapeBuffer(bytes);
 
-		Assert.Equal(180, buffer.Length);
+		Assert.Equal(180, buffer.Bytes.Count);
 		Assert.Equal(ShapeType.GeneralMultipoint, buffer.ShapeType);
 		Assert.Equal(GeometryType.Multipoint, buffer.GeometryType);
 		Assert.False(buffer.HasZ);
@@ -166,7 +166,7 @@ public class ShapeBufferTest
 		var bytes = GetBytesPointXY();
 		var buffer = new ShapeBuffer(bytes);
 
-		Assert.Equal(20, buffer.Length);
+		Assert.Equal(20, buffer.Bytes.Count);
 
 		const string expected = "POINT (2696602.9 1233151.7)";
 

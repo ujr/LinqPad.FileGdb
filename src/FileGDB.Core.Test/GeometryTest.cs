@@ -94,7 +94,9 @@ public class GeometryTest
 		Assert.Equal(3.0, center.X, precision);
 		Assert.Equal(2.0, center.Y, precision);
 
+#pragma warning disable CS0618 // Type or member is obsolete
 		r = GeometryUtils.CircumcircleOld(a, b, c, out center);
+#pragma warning restore CS0618 // Type or member is obsolete
 		Assert.Equal(Math.Sqrt(5), r, precision);
 		Assert.Equal(3.0, center.X, precision);
 		Assert.Equal(2.0, center.Y, precision);
