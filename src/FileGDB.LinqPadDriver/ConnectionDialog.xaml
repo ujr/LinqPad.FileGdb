@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:FileGDB.LinqPadDriver"
         mc:Ignorable="d"
         d:DataContext="{d:DesignInstance {x:Type local:ConnectionProperties}, IsDesignTimeCreatable=False}"
-        Title="File GDB - Connection Details"
+        Title="File GDB Connection"
         Background="{x:Static SystemColors.ControlBrush}"
         SizeToContent="Height" Width="400" MinWidth="400" MinHeight="120"
         WindowStartupLocation="CenterScreen">
@@ -17,12 +17,19 @@
 			</Label>
 			<Label Padding="0,0,0,2">File Geodatabase (.gdb folder path):</Label>
 		</DockPanel>
-		<TextBox Padding="2" Text="{Binding FolderPath}" />
+		<TextBox Padding="2" Margin="0,0,0,3"
+                 Text="{Binding FolderPath}" />
 		<CheckBox IsChecked="{Binding DebugMode}"
 				  ToolTip="Call System.Diagnostics.Debugger.Launch() before creating data context or enumerating rows"
-                  Margin="0,6,0,0">Enable Debugger</CheckBox>
-		<DockPanel LastChildFill="False" Margin="0,3,0,0">
-			<CheckBox IsChecked="{Binding ConnectionInfo.Persist}" VerticalAlignment="Center">Remember this connection</CheckBox>
+                  Margin="0,3">Enable Debugger</CheckBox>
+        <CheckBox IsChecked="{Binding ConnectionInfo.Persist}"
+                  VerticalAlignment="Center"
+                  Margin="0,3">Remember this connection</CheckBox>
+        <DockPanel LastChildFill="False" Margin="0,3,0,0">
+            <Label Content="{Binding DriverInfo}"
+                   d:Content="Foo.Bar v0.0.0"
+                   VerticalAlignment="Center" Foreground="Gray"
+                   Background="Transparent"/>
 			<Button DockPanel.Dock="Right" Content="Cancel" Margin="6,0,0,0" Padding="10,3" MinWidth="60" IsCancel="True" TabIndex="2" />
 			<Button DockPanel.Dock="Right" Content="OK" Margin="6,0,0,0" Padding="10,3" MinWidth="60" IsDefault="True" TabIndex="1" Click="btnOK_Click" />
 		</DockPanel>

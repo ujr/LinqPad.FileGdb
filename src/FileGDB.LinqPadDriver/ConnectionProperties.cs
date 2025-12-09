@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using LINQPad.Extensibility.DataContext;
 
@@ -41,6 +42,24 @@ public class ConnectionProperties : INotifyPropertyChanged
 				ConnectionInfo.SetDebugMode(value);
 				OnPropertyChanged();
 			}
+		}
+	}
+
+	public string DriverInfo => GetDriverInfo();
+
+	private static string GetDriverInfo()
+	{
+		try
+		{
+			// a string like "Foo v1.2.3"
+			var assembly = typeof(FileGdbDriver).Assembly;
+			var assemblyName = assembly.GetName();
+			var version = assemblyName.Version?.ToString(3);
+			return $"{assemblyName.Name ?? "n/a"} v{version ?? "?"}";
+		}
+		catch (Exception ex)
+		{
+			return ex.Message;
 		}
 	}
 
