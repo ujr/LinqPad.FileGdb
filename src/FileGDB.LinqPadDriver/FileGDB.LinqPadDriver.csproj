@@ -1,5 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk">
-	<!--Sdk="Microsoft.NET.Sdk.WindowsDesktop"?-->
 
 	<PropertyGroup>
     <TargetFramework>net6.0-windows</TargetFramework>
@@ -7,12 +6,16 @@
     <Nullable>enable</Nullable>
 		<UseWpf>true</UseWpf>
     <UseWindowsForms>true</UseWindowsForms>
-    <!--Since we have only one TargetFramework (no dual-build), don't append it:-->
-    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <PackageOutputPath>$(SolutionDir)..\pkgs</PackageOutputPath>
 	</PropertyGroup>
 
   <PropertyGroup>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <!--Include symbols-->
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+    <!--Package metadata-->
+    <Product>LINQPad driver for the File Geodatabase</Product>
     <Title>LINQ to File Geodatabase driver for LINQPad 7</Title>
     <Authors>ujr</Authors>
     <Version>0.1.0-alpha1</Version>
@@ -20,7 +23,11 @@
     <FileVersion>0.1.0.1</FileVersion>
     <PackageTags>linqpaddriver;FileGDB;FGDB;Esri;GIS</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <Description>Allows limited read-only access to the File Geodatabase for LINQPad</Description>
+    <Description>A data context driver for LINQPad that allows limited read-only access to the File Geodatabase. No dependencies beyond .NET.</Description>
+    <RepositoryUrl>https://github.com/ujr/LinqPad.FileGdb</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/ujr/LinqPad.FileGdb</PackageProjectUrl>
+    <Copyright>Copyright (c) ujr 2025</Copyright>
     <!-- Title, Product, Description, Company, Copyright, PackageReadmeFile -->
     <!-- About README in NuGet: https://devblogs.microsoft.com/nuget/add-a-readme-to-your-nuget-package/ -->
   </PropertyGroup>
@@ -44,6 +51,9 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
+    <!--To include the referenced FileGDB.Core DLL in the LINQPad driver nuget
+        (although this is explicitly not recommended by the NuGet team):-->
+    <!--<None Include="..\FileGDB.Core\bin\$(Configuration)\net6.0\FileGDB.Core.dll" Pack="true" PackagePath="lib\net6.0" />-->
   </ItemGroup>
 
 	<Target Name="PostBuild1" AfterTargets="PostBuildEvent">

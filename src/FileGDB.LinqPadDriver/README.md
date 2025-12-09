@@ -2,7 +2,7 @@
 
 A driver for LINQPad that allows read-only access
 to the Esri File Geodatabase (also known as File GDB,
-FileGDB, or FGDB.
+FileGDB, or FGDB).
 
 ## About
 
