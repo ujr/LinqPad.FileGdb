@@ -1,8 +1,9 @@
 # FileGDB Driver for LINQPad
 
+[![License](https://img.shields.io/github/license/ujr/LinqPad.FileGdb)](https://github.com/ujr/LinqPad.FileGdb/blob/master/LICENSE)
 This repository contains the source code for a read-only library
 for the Esri File Geodatabase, and a driver for [LINQPad][linqpad]
-that uses this library. Both are written in C# no dependencies
+that uses this library. Both are written in C# with no dependencies
 beyond .NET Core.
 
 Consult the README files in the respective project folders,
