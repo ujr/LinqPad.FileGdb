@@ -14,7 +14,7 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <!--Package metadata-->
     <Product>File Geodatabase read access library</Product>
-    <Title>File Geodatabase read access library</Title>
+    <Title>$(Product)</Title>
     <Authors>ujr</Authors>
     <Version>0.1.0-alpha1</Version>
     <AssemblyVersion>0.1.0.1</AssemblyVersion>
@@ -26,11 +26,13 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/ujr/LinqPad.FileGdb</PackageProjectUrl>
     <Copyright>Copyright (c) ujr 2025</Copyright>
+    <PackageIcon>Icon128.png</PackageIcon>
     <!-- Title, Product, Description, Company, Copyright, PackageReadmeFile -->
     <!-- About README in NuGet: https://devblogs.microsoft.com/nuget/add-a-readme-to-your-nuget-package/ -->
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="..\CommonAssets\Icon128.png" Pack="True" PackagePath="\" />
     <None Include="README.md" Pack="True" PackagePath="\" />
   </ItemGroup>
 

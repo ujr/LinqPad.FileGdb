@@ -9,7 +9,8 @@
         Title="File GDB Connection"
         Background="{x:Static SystemColors.ControlBrush}"
         SizeToContent="Height" Width="400" MinWidth="400" MinHeight="120"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        Icon="/FileGDB.LinqPadDriver;component/Icon32.png">
 	<StackPanel Margin="12">
 		<DockPanel>
 			<Label DockPanel.Dock="Right" Padding="1">

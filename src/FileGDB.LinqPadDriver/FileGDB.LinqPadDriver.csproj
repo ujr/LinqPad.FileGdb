@@ -16,7 +16,7 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <!--Package metadata-->
     <Product>LINQPad driver for the File Geodatabase</Product>
-    <Title>LINQ to File Geodatabase driver for LINQPad 7</Title>
+    <Title>$(Product)</Title>
     <Authors>ujr</Authors>
     <Version>0.1.0-alpha1</Version>
     <AssemblyVersion>0.1.0.1</AssemblyVersion>
@@ -28,11 +28,13 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/ujr/LinqPad.FileGdb</PackageProjectUrl>
     <Copyright>Copyright (c) ujr 2025</Copyright>
+    <PackageIcon>Icon128.png</PackageIcon>
     <!-- Title, Product, Description, Company, Copyright, PackageReadmeFile -->
     <!-- About README in NuGet: https://devblogs.microsoft.com/nuget/add-a-readme-to-your-nuget-package/ -->
   </PropertyGroup>
 
   <ItemGroup>
+    <Resource Include="..\CommonAssets\Icon32.png" Link="Icon32.png" />
     <Content Include="Connection.png">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </Content>
@@ -50,6 +52,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\CommonAssets\Icon128.png" Pack="True" PackagePath="\" />
     <None Include="README.md" Pack="true" PackagePath="\" />
     <!--To include the referenced FileGDB.Core DLL in the LINQPad driver nuget
         (although this is explicitly not recommended by the NuGet team):-->

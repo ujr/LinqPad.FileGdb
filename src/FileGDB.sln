@@ -9,6 +9,12 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "FileGDB.Core", "FileGDB.Cor
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FileGDB.Core.Test", "FileGDB.Core.Test\FileGDB.Core.Test.csproj", "{A0227BFE-27C9-4136-B354-6A09D85892ED}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "CommonAssets", "CommonAssets", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+	ProjectSection(SolutionItems) = preProject
+		CommonAssets\Icon128.png = CommonAssets\Icon128.png
+		CommonAssets\Icon32.png = CommonAssets\Icon32.png
+	EndProjectSection
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
