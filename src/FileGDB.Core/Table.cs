@@ -806,11 +806,10 @@ public sealed class Table : IDisposable
 			case FieldType.ObjectID:
 				size = reader.ReadByte(); // always 4 (or 8)
 				flag = reader.ReadByte(); // always 2 (required, not nullable, not editable)
-										  //field.Nullable = false;
 				break;
 
 			case FieldType.Geometry:
-				size = reader.ReadByte(); // unknown (always 0?)
+				size = reader.ReadByte(); // unknown (always zero?)
 				flag = reader.ReadByte();
 				var geomDef = new GeometryDef(geometryType, tableHasZ, tableHasM);
 
@@ -829,14 +828,12 @@ public sealed class Table : IDisposable
 
 				if (hasInfoM)
 				{
-					//geomDef.HasM = tableHasM;
 					geomDef.MOrigin = reader.ReadDouble();
 					geomDef.MScale = reader.ReadDouble();
 				}
 
 				if (hasInfoZ)
 				{
-					//geomDef.HasZ = tableHasZ;
 					geomDef.ZOrigin = reader.ReadDouble();
 					geomDef.ZScale = reader.ReadDouble();
 				}
