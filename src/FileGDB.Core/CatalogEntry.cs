@@ -54,6 +54,6 @@ public class CatalogEntry
 
 	public override string ToString()
 	{
-		return $"ID={ID} Name={Name} Format={Format}";
+		return $"{Name} (ID={ID} Format={Format})";
 	}
 }

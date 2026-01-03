@@ -30,8 +30,8 @@ source (see LINQPad documentation for details).
 
 Once the driver is available to LINQPad, in the *Choose
 Data Context* dialog select "FileGDB Driver" and click
-*Next*. The *File GDB Connection Details* dialog appears,
-where you enter the path to the File GDB .gdb folder.
+*Next*. The *File GDB Connection* dialog appears, where
+you enter the path to the File GDB's *.gdb* folder.
 
 A new data connection entry will appear and list all
 the tables in the File GDB. You can drag those table
@@ -43,6 +43,76 @@ Tables.MyPointTable.Dump();
 Tables.MyPointTable.Select(row => row.Shape.ShapeBuffer).Dump();
 Tables.MyPointTable.Select(row => row.Shape.Bytes).Dump();
 Tables.MyPointTable.GetRow(5).Dump(); // get row by Object ID
+```
+
+As another example, here is how to retrieve properties
+about XY coordinate storage for each spatial table:
+
+```cs
+from entry in Catalog where entry.IsUserTable()
+let table = entry.OpenTable()
+where table.GeometryType != GeometryType.Null
+let gdef = table.Fields.First(f => f.Type == FieldType.Geometry).GeometryDef
+orderby entry.Name
+select new {
+  TableName = entry.Name, gdef.XOrigin, gdef.YOrigin,
+  gdef.XYScale, // stored in the File GDB
+  XYResolution = 1.0/gdef.XYScale, // reported by ArcGIS
+  gdef.XYTolerance
+}
+```
+
+## Query across all tables
+
+The catalog exposed through the File GDB LINQPad driver is
+enumerable and each entry has an `OpenTable()` method. The
+returned table wrapper is itself enumerable, allowing you to
+write queries across all tables in a File GDB. For example,
+to find all multipart polyline features in any table:
+
+```cs
+from c in Catalog
+where c.IsUserTable()
+let table = c.OpenTable()
+where table.GeometryType == GeometryType.Polyline
+from row in table // SelectMany
+where row.Shape.ShapeBuffer.NumParts > 1
+select new {
+  TableName = entry.Name, row.OID,
+  Shape = Util.OnDemand(row.Shape?.ShapeType.ToString(), () => row.Shape),
+  row.Shape.ShapeBuffer.NumParts,
+  Operator = row.GetValue("OPERATOR")
+}
+```
+
+- The returned row objects have `OID` (type `long`), `Shape`
+  (`GeometryBlob`, may be `null`), and `Fields` (list of the
+  row's fields) properties.
+- They also have a `GetValue(name)` method that returns the
+  value of the named field or `null` if the row has no such field.
+- A table does not know its name; to have the table name in
+  the result rows, refer to the catalog entry's Name property
+  (actually, the table wrapper returned by the LINQPad driver
+  *does* have a Name property, but beware that the real table
+  object of the underlying library does not)
+- LINQPad's `Util.OnDemand()` facility may be useful to allow
+  “drill down” on the results
+
+As another example, count shapes, parts, and vertices per table:
+
+```cs
+// Count parts and vertices per feature class:
+from c in Catalog
+where c.IsUserTable()
+let n = c.Name
+let t = c.OpenTable()
+where t.GeometryType != GeometryType.Null
+select new {
+  Name = n,
+  Shapes = t.Count(r => r.Shape is not null),
+  Parts = t.Sum(r => r.Shape?.ShapeBuffer.NumParts ?? 0),
+  Points = t.Sum(r => r.Shape?.ShapeBuffer.NumPoints ?? 0)
+}
 ```
 
 ## Limitations

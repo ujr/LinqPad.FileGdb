@@ -185,7 +185,7 @@ public class FileGdbDriver : DynamicDataContextDriver
 				? OnDemand(blob, blob.ShapeType.ToString())
 				: blob;
 		}
-		else if (objectToWrite is CatalogEntry entry)
+		else if (objectToWrite is CatalogWrapper entry)
 		{
 			objectToWrite = parent is null ? entry : PreprocessCatalogEntry(entry);
 		}
@@ -323,9 +323,9 @@ public class FileGdbDriver : DynamicDataContextDriver
 		return sb.ToString();
 	}
 
-	private static object PreprocessCatalogEntry(CatalogEntry? catalogEntry)
+	private static object PreprocessCatalogEntry(CatalogWrapper catalogEntry)
 	{
-		if (catalogEntry is null) return null!;
+		//if (catalogEntry is null) return null!;
 
 		// Reorder properties, link to open the table
 
