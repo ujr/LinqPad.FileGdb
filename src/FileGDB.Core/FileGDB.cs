@@ -80,7 +80,8 @@ public sealed class FileGDB : IDisposable
 	{
 		var list = new List<CatalogEntry>();
 
-		var baseName = GetTableBaseName(1); // "a00000001"
+		const int catalogTableID = 1; // "a00000001"
+		var baseName = GetTableBaseName(catalogTableID);
 
 		using (var table = Table.Open(baseName, FolderPath))
 		{

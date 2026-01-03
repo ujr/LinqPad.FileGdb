@@ -3,7 +3,6 @@ using System.Collections.Generic;
 
 namespace FileGDB.Core;
 
-
 public interface IRowValues
 {
 	IReadOnlyList<FieldInfo> Fields { get; }
