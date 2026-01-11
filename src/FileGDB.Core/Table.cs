@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
@@ -72,7 +71,7 @@ public sealed class Table : IDisposable
 
 	/// <summary>The fields on this table (name, type, nullable, etc.)</summary>
 	/// <remarks>Values for the fields will be returned in the same order</remarks>
-	public IReadOnlyList<FieldInfo> Fields { get; private set; }
+	public Fields Fields { get; private set; }
 
 	/// <summary>Info on the indexes associated with this table</summary>
 	public IReadOnlyList<IndexInfo> Indexes => _indexes ??= LoadIndexes();
@@ -89,7 +88,7 @@ public sealed class Table : IDisposable
 		BaseName = baseName;
 		FolderPath = folderPath ?? throw new ArgumentNullException(nameof(folderPath));
 
-		Fields = new ReadOnlyCollection<FieldInfo>(Array.Empty<FieldInfo>());
+		Fields = new Fields(Array.Empty<FieldInfo>());
 		Internals = new InternalInfo(this);
 	}
 
@@ -790,7 +789,7 @@ public sealed class Table : IDisposable
 
 		Debug.Assert(_fieldCount == fields.Count);
 
-		Fields = new ReadOnlyCollection<FieldInfo>(fields);
+		Fields = new Fields(fields.ToArray());
 	}
 
 	private static FieldInfo ReadFieldInfo(
@@ -1096,12 +1095,13 @@ public sealed class Table : IDisposable
 		return result;
 	}
 
-	private IReadOnlyList<IndexInfo> LoadIndexes()
+	private Indexes LoadIndexes()
 	{
 		var fileName = Path.ChangeExtension(BaseName, ".gdbindexes");
 		var filePath = Path.Combine(FolderPath, fileName);
 		// empirical: .gdbindexes may not exist (at least not for system tables)
-		if (!File.Exists(filePath)) return Array.Empty<IndexInfo>();
+		if (!File.Exists(filePath))
+			return new Indexes(Array.Empty<IndexInfo>());
 		using var stream = new FileStream(filePath, FileMode.Open, FileAccess.Read);
 		using var reader = new DataReader(stream);
 
@@ -1142,7 +1142,7 @@ public sealed class Table : IDisposable
 			indexes.Add(new IndexInfo(indexName, fieldName, indexType, BaseName));
 		}
 
-		return indexes;
+		return new Indexes(indexes.ToArray());
 	}
 
 	private static Exception Error(string message)
