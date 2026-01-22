@@ -39,10 +39,10 @@ entries to a Query pane and use Intellisense to write
 LINQ queries against the table. For example:
 
 ```cs
-Tables.MyPointTable.Dump();
-Tables.MyPointTable.Select(row => row.Shape.ShapeBuffer).Dump();
-Tables.MyPointTable.Select(row => row.Shape.Bytes).Dump();
-Tables.MyPointTable.GetRow(5).Dump(); // get row by Object ID
+Tables.MY_SHAPE_TABLE.Dump();
+Tables.MY_SHAPE_TABLE.Select(row => row.SHAPE.ShapeBuffer).Dump();
+Tables.MY_SHAPE_TABLE.Select(row => row.SHAPE.Bytes).Dump();
+Tables.MY_SHAPE_TABLE.GetRow(5).Dump(); // get row by Object ID
 ```
 
 As another example, here is how to retrieve properties
@@ -60,6 +60,16 @@ select new {
   XYResolution = 1.0/gdef.XYScale, // reported by ArcGIS
   gdef.XYTolerance
 }
+```
+
+Geometries can be formatted as WKT (well-knwon text format)
+with the `ToWKT()` method available on both the `Shape` and
+the `ShapeBuffer` class, and for convenience also directly on
+the `GeometryBlob` class (the optional integer argument is
+the number of decimal digits):
+
+```cs
+Tables.MY_SHAPE_TABLE.Select(r => r.SHAPE.ToWKT())
 ```
 
 ## Query across all tables

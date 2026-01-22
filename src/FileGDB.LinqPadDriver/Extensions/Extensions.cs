@@ -1,7 +1,10 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
+using System.Text;
 using FileGDB.Core;
+using FileGDB.Core.WKT;
 using JetBrains.Annotations;
 
 namespace FileGDB.LinqPadDriver.Extensions;
@@ -26,6 +29,29 @@ public static class Extensions
 	public static EnumerableTable Enumerable(this Table table, string? tableName = null)
 	{
 		return new EnumerableTable(table, tableName);
+	}
+
+	[PublicAPI]
+	public static string ToWKT(this GeometryBlob? blob, int decimalDigits = -1)
+	{
+		if (blob is null) return null!;
+		return blob.ShapeBuffer.ToWKT(decimalDigits);
+	}
+
+	[PublicAPI]
+	public static void ToWKT(this GeometryBlob? blob, StringBuilder buffer, int decimalDigits = -1)
+	{
+		if (blob is null)
+			throw new ArgumentNullException(nameof(blob));
+		blob.ShapeBuffer.ToWKT(buffer, decimalDigits);
+	}
+
+	[PublicAPI]
+	public static void ToWKT(this GeometryBlob blob, TextWriter writer, int decimalDigits = -1)
+	{
+		if (blob is null)
+			throw new ArgumentNullException(nameof(blob));
+		blob.ShapeBuffer.ToWKT(writer, decimalDigits);
 	}
 
 	#region Nested: EnumerableTable

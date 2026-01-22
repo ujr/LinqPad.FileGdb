@@ -9,8 +9,9 @@ namespace FileGDB.Core.WKT;
 /// </summary>
 public static class ShapeBufferExtensions
 {
-	public static string ToWKT(this ShapeBuffer shape, int decimalDigits = -1)
+	public static string ToWKT(this ShapeBuffer? shape, int decimalDigits = -1)
 	{
+		if (shape is null) return null!;
 		var buffer = new StringBuilder();
 		ToWKT(shape, buffer, decimalDigits);
 		return buffer.ToString();
@@ -30,8 +31,10 @@ public static class ShapeBufferExtensions
 		wkt.Flush();
 	}
 
-	private static void WriteWKT(ShapeBuffer shape, WKTWriter writer)
+	private static void WriteWKT(ShapeBuffer? shape, WKTWriter writer)
 	{
+		if (shape is null) return; // treat same as GeometryType.Null
+
 		switch (shape.GeometryType)
 		{
 			case GeometryType.Null:
