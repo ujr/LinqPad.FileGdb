@@ -93,6 +93,12 @@ $$FieldProperties$$
 		return sourceCode;
 	}
 
+	public static string MakeEnumTableQuery(string tableName)
+	{
+		var tablePropertyName = MakeIdentifier(tableName);
+		return $"Tables.{tablePropertyName}";
+	}
+
 	private static void BuildTableCode(Core.FileGDB gdb, CatalogEntry entry, StringBuilder tableProps, StringBuilder tableClasses)
 	{
 		var tableName = entry.Name;

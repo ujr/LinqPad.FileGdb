@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Text;
 
 namespace FileGDB.LinqPadDriver;
@@ -47,5 +48,41 @@ public static class Utils
 		}
 
 		return sb;
+	}
+
+	/// <summary>
+	/// Format the first <paramref name="maxBytes"/> bytes from the
+	/// given byte sequence as a string using hex in angle brackets.
+	/// </summary>
+	public static string FormatBytes(IEnumerable<byte> bytes, int maxBytes, bool omitCount = false)
+	{
+		if (bytes is null)
+			throw new ArgumentNullException(nameof(bytes));
+
+		var sb = new StringBuilder();
+		sb.Append('<');
+
+		using var enumerator = bytes.GetEnumerator();
+
+		for (int i = 0; i < maxBytes; i++)
+		{
+			if (!enumerator.MoveNext()) break;
+			if (i > 0) sb.Append(' ');
+			sb.AppendFormat("{0:X2}", enumerator.Current);
+		}
+
+		if (enumerator.MoveNext())
+		{
+			sb.Append(" ...");
+		}
+
+		sb.Append('>');
+
+		if (bytes is ICollection<byte> collection && !omitCount)
+		{
+			sb.AppendFormat(" ({0} bytes)", collection.Count);
+		}
+
+		return sb.ToString();
 	}
 }

@@ -127,7 +127,8 @@ public class FileGdbDriver : DynamicDataContextDriver
 				typeof(GeometryUtils).Namespace,
 				typeof(Shape).Namespace,
 				typeof(ShapeExtensions).Namespace,
-				typeof(ShapeBufferExtensions).Namespace
+				typeof(ShapeBufferExtensions).Namespace,
+				typeof(Extensions.Extensions).Namespace
 			}
 			// Namespace could be null:
 			.Where(ns => ns is not null)
@@ -185,7 +186,7 @@ public class FileGdbDriver : DynamicDataContextDriver
 				? OnDemand(blob, blob.ShapeType.ToString())
 				: blob;
 		}
-		else if (objectToWrite is CatalogWrapper entry)
+		else if (objectToWrite is CatalogEntry entry)
 		{
 			objectToWrite = parent is null ? entry : PreprocessCatalogEntry(entry);
 		}
@@ -196,6 +197,10 @@ public class FileGdbDriver : DynamicDataContextDriver
 		else if (objectToWrite is IndexInfo indexInfo)
 		{
 			objectToWrite = parent is null ? indexInfo : PreprocessIndexInfo(indexInfo);
+		}
+		else if (objectToWrite is Fields fields)
+		{
+			objectToWrite = parent is null ? fields : OnDemand(fields, "Fields");
 		}
 		else if (parent is GeometryBlob)
 		{
@@ -290,61 +295,21 @@ public class FileGdbDriver : DynamicDataContextDriver
 		base.PreprocessObjectToWrite(ref objectToWrite, info);
 	}
 
-	[PublicAPI]
-	public static string FormatBytes(IEnumerable<byte> bytes, int maxBytes, bool omitCount = false)
+	private static object PreprocessCatalogEntry(CatalogEntry? catalogEntry)
 	{
-		if (bytes is null)
-			throw new ArgumentNullException(nameof(bytes));
+		if (catalogEntry is null) return null!;
 
-		var sb = new StringBuilder();
-		sb.Append('<');
+		// Reorder properties, link to open the table in a new LINQPad tab:
 
-		using var enumerator = bytes.GetEnumerator();
-
-		for (int i = 0; i < maxBytes; i++)
-		{
-			if (!enumerator.MoveNext()) break;
-			if (i > 0) sb.Append(' ');
-			sb.AppendFormat("{0:X2}", enumerator.Current);
-		}
-
-		if (enumerator.MoveNext())
-		{
-			sb.Append(" ...");
-		}
-
-		sb.Append('>');
-
-		if (bytes is ICollection<byte> collection && !omitCount)
-		{
-			sb.AppendFormat(" ({0} bytes)", collection.Count);
-		}
-
-		return sb.ToString();
-	}
-
-	private static object PreprocessCatalogEntry(CatalogWrapper catalogEntry)
-	{
-		//if (catalogEntry is null) return null!;
-
-		// Reorder properties, link to open the table
+		var query = DataContextSourceBuilder.MakeEnumTableQuery(catalogEntry.Name);
 
 		return new
 		{
 			catalogEntry.ID,
 			catalogEntry.Name,
 			catalogEntry.Format,
-			Table = Util.OnDemand<object>("Open", delegate
-			{
-				try
-				{
-					return catalogEntry.OpenTable();
-				}
-				catch (Exception ex)
-				{
-					return ex;
-				}
-			})
+			Info = OnDemand(catalogEntry.OpenTable, "Info"),
+			Rows = new Hyperlinq(QueryLanguage.Expression, query, "Rows")
 		};
 	}
 
@@ -383,6 +348,11 @@ public class FileGdbDriver : DynamicDataContextDriver
 			indexInfo.IndexType,
 			FileName = Util.WithStyle(indexInfo.FileName, "color:gray;")
 		};
+	}
+
+	private static string FormatBytes(IEnumerable<byte> bytes, int maxBytes, bool omitCount = false)
+	{
+		return Utils.FormatBytes(bytes, maxBytes, omitCount);
 	}
 
 	private static string FormatCount(int count, string singular, string? plural = null)
@@ -425,6 +395,11 @@ public class FileGdbDriver : DynamicDataContextDriver
 		if (value is null) return null!;
 		label ??= GetLabelText(value);
 		return Util.OnDemand(label, () => value);
+	}
+
+	private static DumpContainer OnDemand<T>(Func<T> func, string label)
+	{
+		return Util.OnDemand(label, func ?? throw new ArgumentNullException(nameof(func)));
 	}
 
 	private static string? GetLabelText(object? obj)

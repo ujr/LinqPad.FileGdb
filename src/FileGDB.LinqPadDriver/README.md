@@ -73,7 +73,7 @@ to find all multipart polyline features in any table:
 ```cs
 from c in Catalog
 where c.IsUserTable()
-let table = c.OpenTable()
+let table = c.OpenTable().Enumerable()
 where table.GeometryType == GeometryType.Polyline
 from row in table // SelectMany
 where row.Shape.ShapeBuffer.NumParts > 1
@@ -85,6 +85,10 @@ select new {
 }
 ```
 
+- The catalog entry's `OpenTable()` method returns a plain
+  `FileGDB.Core.Table` object, which is not enumerable; the
+  extension method `Enumerable()` returns a wrapper around
+  the table that is enumerable.
 - The returned row objects have `OID` (type `long`), `Shape`
   (`GeometryBlob`, may be `null`), and `Fields` (list of the
   row's fields) properties.
@@ -92,20 +96,22 @@ select new {
   value of the named field or `null` if the row has no such field.
 - A table does not know its name; to have the table name in
   the result rows, refer to the catalog entry's Name property
-  (actually, the table wrapper returned by the LINQPad driver
+  (actually, the table wrapper returned by `Enumerable()`
   *does* have a Name property, but beware that the real table
-  object of the underlying library does not)
+  object of the underlying library does not).
 - LINQPad's `Util.OnDemand()` facility may be useful to allow
-  “drill down” on the results
+  “drill down” on the results.
 
-As another example, count shapes, parts, and vertices per table:
+As another example, count shapes, parts, and vertices per table;
+again we use `Enumerable()` to make the plain table returned by
+`OpenTable()` enumerable:
 
 ```cs
 // Count parts and vertices per feature class:
 from c in Catalog
 where c.IsUserTable()
 let n = c.Name
-let t = c.OpenTable()
+let t = c.OpenTable().Enumerable()
 where t.GeometryType != GeometryType.Null
 select new {
   Name = n,
