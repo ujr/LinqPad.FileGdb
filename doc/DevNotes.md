@@ -5,6 +5,12 @@
 Documentation about writing a custom data context driver for LINQPad:  
 <https://www.linqpad.net/Extensibility.aspx>
 
+LINQPad caches drivers in `%LocalAppData%\LINQPad\Drivers\DataContext`
+and NuGet drivers in `%LocalAppData%\LINQPad\NuGet.Drivers`. LINQPad
+also uses the Windows NuGet cache in `%UserProfile%\.nuget\packages`.
+During development it may be useful to remove the driver from any or
+all of these locations.
+
 A driver deployed as a NuGet package can **include samples** that LINQPad
 will show on its Samples tab: simply add `*.linq` files (stored LINQPad
 queries) in a top-level `linqpad-samples` folder to the NuGet package and
