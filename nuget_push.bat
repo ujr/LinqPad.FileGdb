@@ -3,7 +3,7 @@ rem Push built NuGet packages to NuGet.org
 cd /d "%~dp0"
 echo When prompted for API key: use your NuGet.org API key
 rem Adjust VERSION as needed
-set VERSION=0.1.0-beta1
+set VERSION=0.1.1
 set NUGET=nuget.exe
 rem The NuGet gallery source URL:
 set NUGET_SOURCE=https://api.nuget.org/v3/index.json
