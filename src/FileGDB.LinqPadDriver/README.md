@@ -131,6 +131,32 @@ select new {
 }
 ```
 
+## Geodatabase Items
+
+On an abstract level, Esri software organizes data as items
+of various types. The item types form a hierarchy with `Item`
+at the root. For example, a `FeatureClass` is an `AbstractTable`,
+which is a `Dataset`, which is a `Resource`, which is an `Item`;
+and a `CodedValueDomain` is a `Domain`, which is also a `Dataset`.
+
+- type hierarchy is stored in the `GDB_ItemTypes` table
+- item details are defined by XML stored in the `GDB_Items` table
+- can use `XElement.Parse()` to access the XML content
+
+A good view on Esri's understanding of what's in the Geodatabase
+can be obtained like this:
+
+```cs
+from i in Tables.GDB_Items
+join t in Tables.GDB_ItemTypes on i.Type equals t.UUID
+select new {
+  Type = t.Name, i.Name, i.Path,
+  Definition = i.Definition is null
+    ? null
+    : Util.OnDemand("Definition", () => XElement.Parse(i.Definition))
+}
+```
+
 ## Limitations
 
 - this is **experimental** code and comes with **no warranty**

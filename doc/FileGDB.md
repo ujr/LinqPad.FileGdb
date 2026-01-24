@@ -56,22 +56,22 @@ Quoting from ArcGIS Pro documentation at
 
 Ordinary database tables whose names begin with the `GDB_` prefix.
 
-- GDB_SystemCatalog: the catalog: list of all tables
-- GDB_DBTune: config keyword parameters
-- GDB_SpatialRefs: spatial references used by tables in this File GDB
-- GDB_Items: the logical “table of contents” with pointers to physical tables
-- GDB_ItemTypes: a hierarchy of dataset types; `Item` is the root
-- GDB_ItemRelationships: relationships between items, e.g. “feature class in
+- `GDB_SystemCatalog`: the catalog: list of all tables
+- `GDB_DBTune`: config keyword parameters
+- `GDB_SpatialRefs`: spatial references used by tables in this File GDB
+- `GDB_Items`: the logical “table of contents” with pointers to physical tables
+- `GDB_ItemTypes`: a hierarchy of dataset types; `Item` is the root
+- `GDB_ItemRelationships`: relationships between items, e.g. “feature class in
   topology” and “dataset in feature dataset”
-- GDB_ItemRelationshipTypes: relationship types, e.g. FeatureClassInTopology
+- `GDB_ItemRelationshipTypes`: relationship types, e.g. FeatureClassInTopology
   and DatasetInFeatureDataset
-- GDB_ReplicaLog: the ReplicaLog system table (may not exist)
-- GDB_ReplicaChanges: replica changes, only exists if this GDB is a replica
+- `GDB_ReplicaLog`: the ReplicaLog system table (may not exist)
+- `GDB_ReplicaChanges`: replica changes, only exists if this GDB is a replica
 
-Additionally with Pro 3.2
+Additionally since ArcGIS Pro 3.2
 
-- GDB_EditingTemplates
-- GDB_EditingTemplateRelationships
+- `GDB_EditingTemplates`
+- `GDB_EditingTemplateRelationships`
 
 Version 9.x File GDBs had many more system tables
 
@@ -127,8 +127,21 @@ format the *Geometry Blob* of the File Geodatabase. Note that it
 is **different** from the Shapefile or Extended Shape Buffer format
 (see references), which directly stores double values.
 
+The following relationships hold between the integer values stored
+in the File Geodatabase and the actual double coordinate values:
+
+- `X_double = XOrigin + x_int * XYScale`
+- `Y_double = YOrigin + y_int * XYScale`
+- `Z_double = ZOrigin + z_int * ZScale`
+- `M_double = MOrigin + m_int * MScale`
+
+where Origin and Scale are double constants stored in the `GeometryDef`
+of the Shape field definition. ArcGIS software reports Resolution,
+which is the inverse of Scale, that is, `XYResolution = 1/XYScale`
+and similarly for Z and M.
+
 By the way, the *Extended Shape Buffer* format, which is
-an extension of the Shapefile format, is accessible through
+an extension of the Shapefile format, is accessible using
 the ArcGIS Pro SDK (through methods `Geometry.ToEsriShape()`
 and `GeometryBuilder.FromEsriShape()`).
 
