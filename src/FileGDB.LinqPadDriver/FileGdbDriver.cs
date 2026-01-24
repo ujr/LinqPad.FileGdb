@@ -198,10 +198,6 @@ public class FileGdbDriver : DynamicDataContextDriver
 		{
 			objectToWrite = parent is null ? indexInfo : PreprocessIndexInfo(indexInfo);
 		}
-		else if (objectToWrite is Fields fields)
-		{
-			objectToWrite = parent is null ? fields : OnDemand(fields, "Fields");
-		}
 		else if (parent is GeometryBlob)
 		{
 			if (objectToWrite is IReadOnlyList<byte> blobBytes)
@@ -268,12 +264,12 @@ public class FileGdbDriver : DynamicDataContextDriver
 		}
 		else if (parent is TableBase || parent is Table)
 		{
-			if (objectToWrite is IReadOnlyList<FieldInfo> fieldInfos)
+			if (objectToWrite is Fields fieldInfos)
 			{
 				var label = FormatCount(fieldInfos.Count, "field");
 				objectToWrite = OnDemand(fieldInfos, label);
 			}
-			else if (objectToWrite is IReadOnlyList<IndexInfo> indexInfos)
+			else if (objectToWrite is Indexes indexInfos)
 			{
 				var label = FormatCount(indexInfos.Count, "index", "indices");
 				objectToWrite = OnDemand(indexInfos, label);
