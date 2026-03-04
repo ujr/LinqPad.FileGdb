@@ -168,6 +168,7 @@ Size and name limits (from Esri's ArcGIS Pro documentation at
 List of keywords and how they affect data storage.
 It is for ArcGIS 10.0 and cannot be customized.
 Additional keywords may be added in later releases.
+Query the `GDB_DBTune` system table to see all.
 
 Taken from Esri's ArcGIS Pro documentation at
 <https://pro.arcgis.com/en/pro-app/latest/help/data/geodatabases/overview/configuration-keywords-for-file-geodatabases.htm>
@@ -209,6 +210,19 @@ Using the ArcGIS Pro SDK:
 - `var cursor = featureClass.Search()` creates a shared read lock
   (`.rd.lock`) on *featureClass*
 - `cursor.Dispose()` releases this lock (deletes the lock file)
+
+## Accidential Files
+
+Besides the lock files mentioned in the previous section, further
+files may appear in the *.gdb* folder, some are listed here:
+
+- `*.horizon` files seem to be created per spatial table on access
+  (even if purely read-only) by ArcGIS; they are always 32 bytes long
+  and seem to contain 4 double values that are somewhat similar to the
+  spatial reference's domain extent, but not exactly equal; purpose
+  unknown, probably some cache; the sample LINQPad query file
+  [HorizonFiles.linq](../src/FileGDB.LinqPadDriver/linqpad-samples/HorizonFiles.linq)
+  will dump the contents of all horizon files in a File Geodatabase.
 
 ## Resources
 
