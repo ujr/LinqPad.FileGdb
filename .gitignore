@@ -18,6 +18,9 @@
 # User's own R# settings
 *.DotSettings.user
 
+# draw.io backup files
+*.drawio.bkp
+
 # Expanded test data:
 data/TestPro32.gdb/
 data/TestGeom.gdb/

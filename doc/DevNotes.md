@@ -37,3 +37,11 @@ Including a README in NuGet:
 NuGet has a test instance (packages not preserved)
 at <https://int.nugettest.org/> with feed URL
 <https://apiint.nugettest.org/v3/index.json>
+
+## Geometry and Shapes
+
+When a geometry blob is unpacked, it is represented as a subtype
+of the abstract `Shape` class. The shape class hierarchy is shown
+below (source in [Diagram.drawio](./Diagram.drawio)):
+
+![Shape class hierarchy](./DiagramShapes.png)
