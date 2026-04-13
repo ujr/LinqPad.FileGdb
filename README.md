@@ -8,12 +8,16 @@ to access an Esri File Geodatabase (also known as a File GDB or
 an FGDB), and a driver for [LINQPad][linqpad] that uses this library.
 Both are written in C# with no dependencies beyond .NET.
 
-Consult the README files in the respective project folders,
-and see the doc folder for technical information:
+Consult the README files in the respective project folders:
 
 - Reading the File Geodatabase: [src/FileGDB.Core](src/FileGDB.Core/README.md)
 - Driver for LINQPad: [src/FileGDB.LinqPadDriver](src/FileGDB.LinqPadDriver/README.md)
+
+See the doc folder for technical information, for example:
+
 - About the File Geodatabase: [doc/FileGDB.md](doc/FileGDB.md)
+- About the SRef WKID: [doc/EsriSRefFactoryCodes.md](doc/EsriSRefFactoryCodes.md)
+- Developer notes: [doc/DevNotes.md](doc/DevNotes.md)
 
 [linqpad]: https://linqpad.net
 
