@@ -5,7 +5,7 @@ namespace FileGDB.Core.Shapes;
 
 public class CircularArcModifier : SegmentModifier
 {
-	public override int CurveType => CurveTypeCircularArc;
+	public override int CurveType => (int)SegmentType.CircularArc;
 
 	public double D1 { get; } // center point X | start angle
 	public double D2 { get; } // center point Y | end angle

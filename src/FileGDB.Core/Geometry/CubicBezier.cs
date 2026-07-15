@@ -413,13 +413,13 @@ public static class CubicBezier
 		if (t1 is >= 0.0 and <= 1.0) // implies not NaN
 		{
 			XY p = Compute(p0, p1, p2, p3, t1);
-			extent.Expand(p.X, p.Y);
+			extent.Add(p.X, p.Y);
 		}
 
 		if (t2 is >= 0.0 and <= 1.0) // implies not NaN
 		{
 			XY p = Compute(p0, p1, p2, p3, t2);
-			extent.Expand(p.X, p.Y);
+			extent.Add(p.X, p.Y);
 		}
 
 		// Find extrema of the Y component of the parametric equation:
@@ -428,13 +428,13 @@ public static class CubicBezier
 		if (t3 is >= 0.0 and <= 1.0) // implies not NaN
 		{
 			XY p = Compute(p0, p1, p2, p3, t3);
-			extent.Expand(p.X, p.Y);
+			extent.Add(p.X, p.Y);
 		}
 
 		if (t4 is >= 0.0 and <= 1.0) // implies not NaN
 		{
 			XY p = Compute(p0, p1, p2, p3, t4);
-			extent.Expand(p.X, p.Y);
+			extent.Add(p.X, p.Y);
 		}
 
 		return extent;

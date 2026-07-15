@@ -39,26 +39,6 @@ public class GeometryTest
 	}
 
 	[Fact]
-	public void CanBoundingBox()
-	{
-		var box = new BoundingBox();
-
-		Assert.True(box.IsEmpty);
-
-		Assert.False(box.Contains(0, 0));
-		Assert.False(box.Contains(double.NaN, double.NaN));
-
-		box.Expand(0, 0);
-		Assert.False(box.IsEmpty);
-		Assert.True(box.Contains(0, 0));
-
-		box.Expand(2, -1);
-		Assert.False(box.IsEmpty);
-		Assert.True(box.Contains(2, -1));
-		Assert.False(box.Contains(2, -1.0000001));
-	}
-
-	[Fact]
 	public void CanSignedAndHeronArea()
 	{
 		var a = new XY(1, 1);

@@ -4,7 +4,7 @@ namespace FileGDB.Core.Shapes;
 
 public class CubicBezierModifier : SegmentModifier
 {
-	public override int CurveType => CurveTypeCubicBezier;
+	public override int CurveType => (int)SegmentType.CubicBezier;
 
 	public double ControlPoint1X { get; }
 	public double ControlPoint1Y { get; }

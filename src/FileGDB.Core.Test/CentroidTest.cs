@@ -148,7 +148,67 @@ public class CentroidTest
 		Assert.Equal(1.166666667, c2.X, precision: 9);
 		Assert.Equal(0.833333333, c2.Y, precision: 9);
 
-		// TODO much more: multipart, holes, degenerate, lower dims
+		// Two disjoint unit squares
+
+		XY c3 = Centroid.Begin
+			.AddPolygon(Pts(0, 0, 1, 0, 1, 1, 0, 1))
+			.AddPolygon(Pts(2, 2, 3, 2, 3, 3, 2, 3))
+			.Result;
+		Assert.Equal(1.5, c3.X);
+		Assert.Equal(1.5, c3.Y);
+
+		// 3x3 square with 1x1 hole in the middle
+
+		XY c4 = Centroid.Begin
+			.AddPolygon(Pts(0, 0, 3, 0, 3, 3, 0, 3))
+			.AddPolygon(Pts(1, 1, 2, 1, 2, 2, 1, 2), isHole: true)
+			.Result;
+		Assert.Equal(1.5, c4.X);
+		Assert.Equal(1.5, c4.Y);
+
+		// Same but hole vertices cw:
+
+		XY c5 = Centroid.Begin
+			.AddPolygon(Pts(0, 0, 3, 0, 3, 3, 0, 3))
+			.AddPolygon(Pts(1, 1, 1, 2, 2, 2, 2, 1))
+			.Result;
+		Assert.Equal(1.5, c5.X);
+		Assert.Equal(1.5, c5.Y);
+
+		// Unit square with extra line (ignored) and points (ignored):
+
+		XY c6 = Centroid.Begin
+			.AddPoint(Pt(10, 10))
+			.AddLine(Pt(0, 10), Pt(10, 10))
+			.AddPolygon(Pts(0, 0, 1, 0, 1, 1, 0, 1))
+			.AddLine(Pt(3, 3), Pt(4, 4))
+			.AddPoint(Pt(5, 5))
+			.Result;
+		Assert.Equal(0.5, c6.X);
+		Assert.Equal(0.5, c6.Y);
+
+		// Degenerate polygon counts as a line (implicit closing line):
+
+		XY c7 = Centroid.Begin.AddPolygon(Pts(0, 0, 10, 0, 5, 0))
+			.Result;
+		Assert.Equal(5.0, c7.X);
+		Assert.Equal(0.0, c7.Y);
+
+		// Very degenerate polygon counts as a point:
+
+		XY c8 = Centroid.Begin
+			.AddPolygon(Pts(3, 3, 3, 3, 3, 3))
+			.Result;
+		Assert.Equal(3.0, c8.X);
+		Assert.Equal(3.0, c8.Y);
+
+		// Non-simple polygon (bowtie) ......
+
+		XY c9 = Centroid.Begin
+			.AddPolygon(Pts(0, 0, 1, 1, 1, 0, 0, 1))
+			.Result;
+		Assert.Equal(0.5, c9.X);
+		Assert.Equal(0.5, c9.Y);
 	}
 
 	[Fact]
@@ -193,8 +253,9 @@ public class CentroidTest
 
 		Assert.Equal(1.0, Centroid.SignedArea2(Pts(0, 0, 1, 0, 1, 0, 0.5, 0.5, 0, 1, 0, 1)));
 
-		// non-simple should not be used; this one yield zero area:
+		// non-simple should not be used; these here (bowtie and double line) yield zero area:
 
+		Assert.Equal(0.0, Centroid.SignedArea2(Pts(0, 0, 1, 1, 1, 0, 0, 1)));
 		Assert.Equal(0.0, Centroid.SignedArea2(Pts(0, 0, 1, 0, 1, 1, 1, 0)));
 	}
 

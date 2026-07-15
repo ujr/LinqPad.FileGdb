@@ -60,21 +60,34 @@ public class Centroid
 		return this;
 	}
 
+	/// <summary>
+	/// Add a straight line to the centroid calculation.
+	/// The line segment is given by its two endpoints.
+	/// </summary>
 	public Centroid AddLine(XY p0, XY p1)
 	{
+		var mid = 0.5 * (p0 + p1);
 		var length = XY.Distance(p0, p1);
 
+		return AddLine(mid, length);
+	}
+
+	/// <summary>
+	/// Add a segment to the centroid calculation, given its centroid and
+	/// length (weight); for a straight line, the centroid is its midpoint.
+	/// </summary>
+	public Centroid AddLine(XY center, double length)
+	{
 		if (length > 0)
 		{
-			var mid = 0.5 * (p0 + p1);
-			_lineSumX += length * mid.X;
-			_lineSumY += length * mid.Y;
+			_lineSumX += length * center.X;
+			_lineSumY += length * center.Y;
 			_lineLength += length;
 		}
 		else
 		{
-			// degenerate line still counts as a point:
-			AddPoint(p0);
+			// degenerate segment still counts as a point:
+			AddPoint(center);
 		}
 
 		return this;
@@ -88,12 +101,12 @@ public class Centroid
 		int count = vertices.Count;
 		if (count <= 0) return this; // empty
 
-		XY p1 = vertices[0];
+		var p1 = vertices[0];
 		CompSum lineLength = 0.0;
 
 		for (int i = 1; i < count; i++)
 		{
-			XY p0 = p1;
+			var p0 = p1;
 			p1 = vertices[i];
 			var segmentLength = XY.Distance(p0, p1);
 
@@ -144,7 +157,7 @@ public class Centroid
 
 		if (isHole.HasValue)
 		{
-			if (isHole == true && area2 > 0 || isHole == false && area2 < 0)
+			if ((isHole == true && area2 > 0) || (isHole == false && area2 < 0))
 			{
 				area2 *= -1;
 				cx3 *= -1;
@@ -197,7 +210,7 @@ public class Centroid
 		{
 			// isHole: null use orientation, true assume hole, false assume shell
 
-			if (isHole == true && area2 > 0 || isHole == false && area2 < 0)
+			if ((isHole == true && area2 > 0) || (isHole == false && area2 < 0))
 			{
 				area2 *= -1;
 				cx3 *= -1;
@@ -226,7 +239,7 @@ public class Centroid
 	{
 		get
 		{
-			GetCentroid(out double x, out double y);
+			GetCentroid(out var x, out var y);
 			return new XY(x, y);
 		}
 	}

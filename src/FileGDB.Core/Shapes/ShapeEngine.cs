@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using FileGDB.Core.Geometry;
@@ -227,6 +228,170 @@ public class ShapeEngine : IShapeEngine
 
 	#endregion
 
+	#region Centroid
+
+	public PointShape GetCentroid(Shape shape)
+	{
+		QueryCentroid(shape, out var cx, out var cy);
+		// cx and cy are NaN if shape has no centroid;
+		// centroid is purely 2D, thus no Z, no M, no ID
+		return new PointShape(cx, cy);
+	}
+
+	public bool QueryCentroid(Shape? shape, out double cx, out double cy)
+	{
+		cx = cy = double.NaN;
+
+		if (shape is null) return false;
+		if (shape.IsEmpty) return false;
+
+		if (shape is PointShape point)
+		{
+			cx = point.X;
+			cy = point.Y;
+			return true;
+		}
+
+		if (shape is BoxShape box)
+		{
+			cx = (box.XMin + box.XMax) / 2;
+			cy = (box.YMin + box.YMax) / 2;
+			return true;
+		}
+
+		if (shape is MultipointShape multipoint)
+		{
+			var centroid = new Centroid();
+
+			foreach (var xy in multipoint.CoordsXY)
+			{
+				centroid.AddPoint(xy);
+			}
+
+			return centroid.GetCentroid(out cx, out cy);
+		}
+
+		if (shape is PolylineShape polyline)
+		{
+			var centroid = new Centroid();
+
+			foreach (var part in polyline.Parts)
+			{
+				// TODO consider segment modifiers: want length-weighted average of segment midpoints
+				centroid.AddLine(new ImmutableList<XY>(part.CoordsXY));
+			}
+
+			return centroid.GetCentroid(out cx, out cy);
+		}
+
+		if (shape is PolygonShape polygon)
+		{
+			var centroid = new Centroid();
+
+			foreach (var part in polygon.Parts)
+			{
+				centroid.AddPolygon(new ImmutableList<XY>(part.CoordsXY));
+			}
+
+			return centroid.GetCentroid(out cx, out cy);
+		}
+
+		throw new NotSupportedException($"Unknown shape type: {shape.GetType().Name}");
+	}
+
+	#endregion
+
+	#region Bounding Box
+
+	public BoxShape GetBox(Shape? shape)
+	{
+		var bbox = new BoundingBox();
+		QueryBox(shape, bbox);
+		var flags = shape?.Flags ?? ShapeFlags.None;
+		return new BoxShape(flags, bbox.XMin, bbox.YMin, bbox.XMax, bbox.YMax, bbox.ZMin, bbox.ZMax);
+	}
+
+	/// <summary>
+	/// Add the given shape's bounding box to the given or a new box object.
+	/// </summary>
+	/// <returns>The given <paramref name="bbox"/> or a bounding box instance</returns>
+	public bool QueryBox(Shape? shape, BoundingBox bbox)
+	{
+		if (bbox is null)
+			throw new ArgumentNullException(nameof(bbox));
+
+		if (shape is null) return false;
+		if (shape.IsEmpty) return false;
+
+		if (shape is PointShape point)
+		{
+			if (point.IsEmpty) return false;
+
+			bbox.Add(point.X, point.Y);
+
+			bbox.AddZ(point.Z);
+
+			return true;
+		}
+
+		if (shape is BoxShape box)
+		{
+			if (box.IsEmpty) return false;
+
+			bbox.Add(box.XMin, box.YMin);
+			bbox.Add(box.XMax, box.YMax);
+
+			bbox.AddZ(box.ZMin);
+			bbox.AddZ(box.ZMax);
+
+			return true;
+		}
+
+		if (shape is MultipointShape multipoint)
+		{
+			if (multipoint.IsEmpty) return false;
+
+			foreach (var xy in multipoint.CoordsXY)
+			{
+				bbox.Add(xy.X, xy.Y);
+			}
+
+			AddZs(multipoint, bbox);
+
+			return true;
+		}
+
+		if (shape is MultipartShape multipart)
+		{
+			if (multipart.IsEmpty) return false;
+
+			// TODO iterate segments and consider extrema of curved segments!
+			foreach (var xy in multipart.CoordsXY)
+			{
+				bbox.Add(xy.X, xy.Y);
+			}
+
+			AddZs(multipart, bbox);
+
+			return true;
+		}
+
+		throw new NotSupportedException($"Unknown shape type: {shape.GetType().Name}");
+	}
+
+	private static void AddZs(PointListShape shape, BoundingBox box)
+	{
+		if (shape.HasZ && shape.CoordsZ is not null)
+		{
+			foreach (var z in shape.CoordsZ)
+			{
+				box.AddZ(z);
+			}
+		}
+	}
+
+	#endregion
+
 	/// <returns>Twice the signed area of the polygon defined by the given coordinates</returns>
 	/// <remarks>Implemented using the "shoelace formula" (see Wikipedia)</remarks>
 	public static double Area2(IReadOnlyList<XY> coords, int first, int count)
@@ -245,79 +410,6 @@ public class ShapeEngine : IShapeEngine
 		return a;
 	}
 
-	public PointShape GetCentroid(Shape shape)
-	{
-		QueryCentroid(shape, out var cx, out var cy);
-		return new PointShape(shape.Flags, cx, cy, DefaultZ, DefaultM, DefaultID);
-	}
-
-	public void QueryCentroid(Shape? shape, out double cx, out double cy)
-	{
-		cx = cy = double.NaN;
-
-		if (shape is null) return;
-		if (shape.IsEmpty) return;
-
-		if (shape is PointShape point)
-		{
-			cx = point.X;
-			cy = point.Y;
-			return;
-		}
-
-		if (shape is BoxShape box)
-		{
-			cx = (box.XMin + box.XMax) / 2;
-			cy = (box.YMin + box.YMax) / 2;
-			return;
-		}
-
-		if (shape is MultipointShape multipoint)
-		{
-			QueryCentroid(multipoint, out cx, out cy);
-			return;
-		}
-
-		if (shape is PolylineShape polyline)
-		{
-			// ?? Esri seems to do centroid of all segment midpoints
-			throw new NotImplementedException();
-		}
-
-		if (shape is PolygonShape polygon)
-		{
-			// Polygon: see paper notes
-			throw new NotImplementedException();
-		}
-
-		throw new NotSupportedException($"Unknown shape type: {shape.GetType().Name}");
-	}
-
-	private void QueryCentroid(MultipointShape? multipoint, out double cx, out double cy)
-	{
-		if (multipoint is null || multipoint.IsEmpty)
-		{
-			cx = cy = double.NaN;
-			return;
-		}
-
-		// Centroid is mean of points in multipoint
-		// TODO consider Kahan summation for numeric stability
-
-		double sx = 0.0;
-		double sy = 0.0;
-
-		var coords = multipoint.CoordsXY;
-		for (int i = 0; i < coords.Count; i++)
-		{
-			sx += coords[i].X;
-			sy += coords[i].Y;
-		}
-
-		cx = sx / coords.Count;
-		cy = sy / coords.Count;
-	}
-
 	private static double Mean(double[] data)
 	{ // Knuth's TAOCP, also described in https://dassencio.org/68
 		double mean = 0.0;
@@ -330,6 +422,86 @@ public class ShapeEngine : IShapeEngine
 		}
 
 		return mean;
+	}
+
+	private class ImmutableList<T> : IList<T>, IReadOnlyList<T>
+	{
+		private readonly IReadOnlyList<T> _inner;
+
+		public ImmutableList(IReadOnlyList<T> inner)
+		{
+			_inner = inner ?? throw new ArgumentNullException(nameof(inner));
+		}
+
+		//public ImmutableList(IList<T> inner)
+		//{
+		//	_inner = new Wrapper<T>(inner);
+		//}
+
+		IEnumerator IEnumerable.GetEnumerator()
+		{
+			return GetEnumerator();
+		}
+
+		public IEnumerator<T> GetEnumerator()
+		{
+			return _inner.GetEnumerator();
+		}
+
+		public void Add(T item)
+		{
+			throw Immutable();
+		}
+
+		public void Clear()
+		{
+			throw Immutable();
+		}
+
+		public bool Contains(T item)
+		{
+			return _inner.Contains(item);
+		}
+
+		public void CopyTo(T[] array, int arrayIndex)
+		{
+			throw new NotImplementedException();
+		}
+
+		public bool Remove(T item)
+		{
+			throw Immutable();
+		}
+
+		public int Count => _inner.Count;
+
+		public bool IsReadOnly => true;
+
+		public int IndexOf(T item)
+		{
+			throw new NotImplementedException();
+		}
+
+		public void Insert(int index, T item)
+		{
+			throw Immutable();
+		}
+
+		public void RemoveAt(int index)
+		{
+			throw Immutable();
+		}
+
+		public T this[int index]
+		{
+			get => _inner[index];
+			set => throw Immutable();
+		}
+
+		private static InvalidOperationException Immutable()
+		{
+			return new InvalidOperationException("Immutable list");
+		}
 	}
 
 	private class PointComparerXY : IEqualityComparer<PointShape>
