@@ -16,6 +16,8 @@ public interface IShapeEngine
 	/// <summary>Compute the centroid of the given shape</summary>
 	/// <returns>The centroid of the given shape, or an empty point
 	/// if the shape has no centroid (e.g. because it is empty)</returns>
+	/// <remarks>The centroid is purely 2D, thus no Z, no M, no ID,
+	/// regardless of the input <paramref name="shape"/>.</remarks>
 	PointShape GetCentroid(Shape shape);
 
 	/// <summary>Compute and add the bounding box of the given shape</summary>
@@ -26,6 +28,8 @@ public interface IShapeEngine
 	/// <summary>Compute the bounding box of the given shape</summary>
 	/// <returns>The bounding box of the given shape, or an empty box
 	/// if the shape has no bounding box (e.g. because it is empty)</returns>
+	/// <remarks>The bounding box is purely 2D, thus no Z, no M, no ID,
+	/// regardless of the input <paramref name="shape"/>.</remarks>
 	BoxShape GetBox(Shape shape);
 
 	Shape GetBoundary(Shape shape);

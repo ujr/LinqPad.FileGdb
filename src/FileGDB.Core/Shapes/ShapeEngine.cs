@@ -10,9 +10,20 @@ public class ShapeEngine : IShapeEngine
 {
 	public static IShapeEngine Default { get; } = new ShapeEngine();
 
-	private static double DefaultZ => ShapeBuffer.DefaultZ;
-	private static double DefaultM => ShapeBuffer.DefaultM;
-	private static int DefaultID => ShapeBuffer.DefaultID;
+	//private static double DefaultZ => ShapeBuffer.DefaultZ;
+	//private static double DefaultM => ShapeBuffer.DefaultM;
+	//private static int DefaultID => ShapeBuffer.DefaultID;
+
+	public bool ClockwiseExterior { get; }
+
+	/// <param name="clockwiseExterior">iff true, clockwise rings are
+	/// considered outer, and counterclockwise rings considered inner
+	/// (holes); important for proper polygon area computation; for Esri
+	/// conventions set to true, for OGC conventions leave false</param>
+	public ShapeEngine(bool clockwiseExterior = false)
+	{
+		ClockwiseExterior = clockwiseExterior;
+	}
 
 	#region Length
 
@@ -108,7 +119,7 @@ public class ShapeEngine : IShapeEngine
 		return box.Width * box.Height;
 	}
 
-	private static double GetArea(PolygonShape? polygon)
+	private double GetArea(PolygonShape? polygon)
 	{
 		if (polygon is null) return 0;
 		if (polygon.IsEmpty) return 0;
@@ -124,7 +135,9 @@ public class ShapeEngine : IShapeEngine
 			int i = polygon.GetPartStart(j);
 			int n = polygon.GetPartStart(j + 1) - i;
 
-			area += Area2(coords, i, n);
+			var a2 = GeometryUtils.SignedArea2(coords, i, n);
+			if (ClockwiseExterior) a2 *= -1; // swap sign for Esri convention
+			area += a2;
 		}
 
 		return area / 2;
@@ -391,24 +404,6 @@ public class ShapeEngine : IShapeEngine
 	}
 
 	#endregion
-
-	/// <returns>Twice the signed area of the polygon defined by the given coordinates</returns>
-	/// <remarks>Implemented using the "shoelace formula" (see Wikipedia)</remarks>
-	public static double Area2(IReadOnlyList<XY> coords, int first, int count)
-	{
-		// TODO ccw is positive, cw is negative -- should probably be the other way round with Esri shapes
-		double a = 0.0;
-
-		int n = coords.Count;
-		for (int i = 0; i < n; i++)
-		{
-			int j = (i + 1) % n;
-			a += coords[i].X * coords[j].Y;
-			a -= coords[i].Y * coords[j].X;
-		}
-
-		return a;
-	}
 
 	private static double Mean(double[] data)
 	{ // Knuth's TAOCP, also described in https://dassencio.org/68

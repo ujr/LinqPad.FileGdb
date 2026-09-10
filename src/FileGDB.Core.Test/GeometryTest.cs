@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using FileGDB.Core.Geometry;
 using Xunit;
 
@@ -52,6 +53,37 @@ public class GeometryTest
 
 		Assert.Equal(-5.0, GeometryUtils.SignedArea(a, b, c), precision);
 		Assert.Equal(5.0, GeometryUtils.SignedArea(c, b, a), precision);
+	}
+
+	[Fact]
+	public void CanSignedArea2()
+	{
+		var a = new XY(1, 1);
+		var b = new XY(2, 4);
+		var c = new XY(5, 3);
+
+		var p = new XY(6, 6);
+		var q = new XY(9, 6);
+		var r = new XY(9, 9);
+		var s = new XY(6, 9);
+
+		const int precision = 7; // decimal places
+
+		Assert.Equal(-10.0, GeometryUtils.SignedArea2(Coords(a, b, c)), precision);
+		Assert.Equal(10.0, GeometryUtils.SignedArea2(Coords(c, b, a)), precision);
+		Assert.Equal(18.0, GeometryUtils.SignedArea2(Coords(p, q, r, s)), precision);
+
+		// Duplicated point (closed polygon) is irrelevant:
+		Assert.Equal(-10.0, GeometryUtils.SignedArea2(Coords(a, b, c, a)), precision);
+		Assert.Equal(10.0, GeometryUtils.SignedArea2(Coords(c, b, a, c)), precision);
+		Assert.Equal(18.0, GeometryUtils.SignedArea2(Coords(p, q, r, s, p)), precision);
+
+		// Sublist of points:
+		var list = Coords(a, b, c, a, p, q, r, s, p);
+		Assert.Equal(-10.0, GeometryUtils.SignedArea2(list, 0, 3));
+		Assert.Equal(-10.0, GeometryUtils.SignedArea2(list, 0, 4));
+		Assert.Equal(18.0, GeometryUtils.SignedArea2(list, 4, 4));
+		Assert.Equal(18.0, GeometryUtils.SignedArea2(list, 4, 5));
 	}
 
 	[Fact]
@@ -111,5 +143,10 @@ public class GeometryTest
 		Assert.Equal(2 * Math.PI, GeometryUtils.CentralAngle(a, o, a, true), 9);
 
 		// TODO much more: different quadrants, degenerate cases
+	}
+
+	private static IReadOnlyList<XY> Coords(params XY[] points)
+	{
+		return points;
 	}
 }

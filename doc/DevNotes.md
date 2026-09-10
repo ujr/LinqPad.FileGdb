@@ -108,6 +108,19 @@ area = PolygonAreaCentroid(polygon, 3, &centroid);
 // expect area = 0.5, centroid = 0.6666, 0.3333
 ```
 
+### Ring Orientation
+
+Area computation algorithm assumes rings are properly oriented.
+Unfortunately, different systems use different conventions for
+ring orientation (cw=clockwise, ccw=counterclockwise):
+
+Convention|outer ring|inner ring
+----------|:--------:|:--------:
+OGC Simple Features|ccw|cw
+Esri Shapefile|cw|ccw
+Esri ArcGIS|cw|ccw
+GeoJSON (RFC 7946)|ccw|cw
+
 References
 
 - About area and centroid of a polygon, see the short article
@@ -117,3 +130,5 @@ References
   <https://en.wikipedia.org/wiki/Shoelace_formula>
 - The OGC Simple Features Specification available at
   <http://www.opengis.net/doc/is/sfa/1.2.1>
+- Esri geometry concepts in the Pro SDK at
+  <https://github.com/esri/arcgis-pro-sdk/wiki/ProConcepts-Geometry>

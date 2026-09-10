@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 
 namespace FileGDB.Core.Geometry;
 
@@ -53,6 +54,50 @@ public static class GeometryUtils
 	{
 		var t = (p1.X - p0.X) * (p2.Y - p0.Y) - (p2.X - p0.X) * (p1.Y - p0.Y);
 		return t / 2;
+	}
+
+	public static double SignedArea2(IReadOnlyList<XY> coords)
+	{
+		if (coords is null)
+			throw new ArgumentNullException(nameof(coords));
+
+		return SignedArea2(coords, 0, coords.Count);
+
+		//int n = coords.Count;
+		//for (int i = first; i < n; i++)
+		//{
+		//	int j = (i + 1) % n;
+		//	a += coords[i].X * coords[j].Y;
+		//	a -= coords[i].Y * coords[j].X;
+		//}
+	}
+
+	/// <returns>Twice the signed area of the polygon defined by the given coordinates</returns>
+	/// <remarks>Implemented using the "shoelace formula" (see Wikipedia).
+	/// Clockwise oriented polygons are considered holes (negative area),
+	/// counterclockwise oriented polygons have positive area; the caller
+	/// may swap the sign for different conventions</remarks>
+	public static double SignedArea2(IReadOnlyList<XY> coords, int start, int count)
+	{
+		if (coords is null)
+			throw new ArgumentNullException(nameof(coords));
+		if (start < 0)
+			throw new ArgumentOutOfRangeException(nameof(start));
+		if (count < 0)
+			throw new ArgumentOutOfRangeException(nameof(count));
+		if (start + count > coords.Count)
+			throw new ArgumentOutOfRangeException();
+
+		double a = 0.0;
+
+		for (int i = 0; i < count; i++)
+		{
+			int j = (i + 1) % count;
+			a += coords[start + i].X * coords[start + j].Y;
+			a -= coords[start + i].Y * coords[start + j].X;
+		}
+
+		return a;
 	}
 
 	/// <summary>
