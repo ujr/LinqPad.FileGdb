@@ -145,6 +145,7 @@ public abstract class MultipartShape : PointListShape
 		int limit = GetPartStart(partIndex + 1);
 		return _curves
 			.Where(c => start <= c.SegmentIndex && c.SegmentIndex < limit)
+			.Select(c => c.Clone(c.SegmentIndex - start))
 			.ToList();
 	}
 

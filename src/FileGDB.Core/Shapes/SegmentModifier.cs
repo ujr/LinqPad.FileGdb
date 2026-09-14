@@ -5,12 +5,19 @@ namespace FileGDB.Core.Shapes;
 
 public abstract class SegmentModifier
 {
-	public int SegmentIndex { get; }
+	public int SegmentIndex { get; private set; }
 	public abstract int CurveType { get; }
 
 	protected SegmentModifier(int segmentIndex)
 	{
 		SegmentIndex = segmentIndex;
+	}
+
+	internal SegmentModifier Clone(int segmentIndex)
+	{
+		var copy = (SegmentModifier) MemberwiseClone();
+		copy.SegmentIndex = segmentIndex;
+		return copy;
 	}
 
 	public virtual double GetLength(XY startPoint, XY endPoint)
