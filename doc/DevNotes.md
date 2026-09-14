@@ -26,6 +26,27 @@ In the `.csproj` it could look like this:
 ...
 ```
 
+## .NET Versions
+
+.NET started as the Windows-only **.NET Framework** in 2002,
+version **4.8** is the last version of .NET Framework.
+
+The successor was the completely rewritten cross-platform and
+open source **.NET Core** (version 1.0 in 2016). It was later
+renamed to just **.NET** (and the version jumped from 3.1 to 5).
+
+|Version|Release |LTS|Support ends|Lifetime |
+|-------|--------|:-:|------------|---------|
+|.NET 6 |Nov 2021|Yes|Nov 2024    | 3 years |
+|.NET 7 |Nov 2022|No |May 2024    |1.5 years|
+|.NET 8 |Nov 2023|Yes|Nov 2026    | 3 years |
+|.NET 9 |Nov 2024|No |Nov 2026    | 2 years |
+|.NET 10|Nov 2025|Yes|Nov 2028    | 3 years |
+|.NET 11|Nov 2026| ? |Nov 2028?   | ?       |
+|.NET 12|Nov 2027| ? |Nov 2023?   | ?       |
+
+LTS = Long Term Support, apparently 3 years
+
 ## NuGet
 
 Including symbols with NuGet:  
