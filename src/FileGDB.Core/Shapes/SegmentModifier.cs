@@ -27,6 +27,8 @@ public abstract class SegmentModifier
 		return Math.Sqrt(dx * dx + dy * dy);
 	}
 
+	public abstract XY GetCentroid(XY startPoint, XY endPoint);
+
 	public abstract int GetShapeBufferSize();
 
 	public int WriteShapeBuffer(byte[] bytes, int offset)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using FileGDB.Core.Geometry;
 using FileGDB.Core.Shapes;
 using Xunit;
@@ -34,7 +35,17 @@ public class ShapeEngineTest
 		Assert.Equal(4.0, Engine.GetLength(Polygon(0, 0, 1, 0, 1, 1, 0, 1, 0, 0)));
 		// Polygons are NOT automatically closed for length computation:
 		Assert.Equal(4.0, Engine.GetLength(Polygon(0, 0, 1, 0, 1, 1, NewPart, 1, 0, 2, 0, 2, 1)));
-		// TODO Polyline/Polygon with non-linear segments!
+
+		var p14 = Polyline(Pt(0, 0), Bez(1, 2, 3, 3), Pt(4, 0));
+		var l14 = Engine.GetLength(p14);
+		Assert.Equal(5.8299272246, l14, precision);
+
+		// polygon with Bezier segment in 2nd part
+		var p15 = Polyline(
+			Pt(5, 5), Pt(6, 5), Pt(6, 6), Pt(5, 6), Pt(5, 5), null,
+			Pt(0, 0), Bez(1, 2, 3, 3), Pt(4, 0), Pt(0, 0));
+		var c15 = Engine.GetLength(p15);
+		Assert.Equal(13.8299272246, c15, precision);
 	}
 
 	[Fact]
@@ -143,6 +154,22 @@ public class ShapeEngineTest
 		// .5 .5 with weight 1 and 3 3 with weight 4 gives 2.5 2.5
 		Assert.Equal(2.5, c12.X);
 		Assert.Equal(2.5, c12.Y);
+
+		// polyline with Bezier segment
+		var p13 = Polyline(Pt(0, 0), Bez(1, 2, 3, 3), Pt(4, 0));
+		var c13 = Engine.GetCentroid(p13);
+		Assert.NotNull(c13);
+		Assert.False(c13.IsEmpty);
+		Assert.Equal(2.0, c13.X);
+		Assert.Equal(1.25, c13.Y);
+
+		// polyline with Bezier segment in 2nd part
+		var p14 = Polyline(Pt(0, -1), Pt(0, +0), null, Pt(0, 0), Bez(1, 2, 3, 3), Pt(4, 0));
+		var c14 = Engine.GetCentroid(p14);
+		Assert.NotNull(c14);
+		Assert.False(c14.IsEmpty);
+		Assert.Equal(1.7071711112, c14.X, precision: 9);
+		Assert.Equal(0.9937747223, c14.Y, precision: 9);
 	}
 
 	[Fact]
@@ -250,6 +277,43 @@ public class ShapeEngineTest
 		Assert.Equal(0, parts3[4]);
 	}
 
+	[Fact]
+	public void SelfCheckCanCollectCurved()
+	{
+		Collect([], out var xys0, out var curves0, out var parts0);
+		Assert.Empty(xys0);
+		Assert.Empty(curves0);
+		Assert.Equal(1, parts0.Count);
+		Assert.Equal(0, parts0[0]); // one empty part
+
+		// one part: (1,2)--(3,4)..(5,6,7,8)..(9,0)
+		Collect([1,2,Pt(3,4),Bez(5,6,7,8),9,0], out var xys1, out var curves1, out var parts1);
+		Assert.Equal(3, xys1.Count);
+		Assert.Equal(new XY(1,2), xys1[0]);
+		Assert.Equal(1, curves1.Count);
+		Assert.Equal(1, curves1[0].SegmentIndex);
+		Assert.IsType<CubicBezierModifier>(curves1[0]);
+		Assert.Equal(1, parts1.Count);
+		Assert.Equal(3, parts1[0]);
+
+		Collect([Pt(1,1),Pt(2,2),null,double.NaN,Pt(3,3),Bez(4,4,5,5),Pt(6,6),Bez(7,7,8,8),Pt(9,9)], out var xys2, out var curves2, out var parts2);
+		Assert.Equal(5, xys2.Count);
+		Assert.Equal(new XY(1, 1), xys2[0]);
+		Assert.Equal(new XY(2, 2), xys2[1]);
+		Assert.Equal(new XY(3, 3), xys2[2]);
+		Assert.Equal(new XY(6, 6), xys2[3]);
+		Assert.Equal(new XY(9, 9), xys2[4]);
+		Assert.Equal(2, curves2.Count);
+		Assert.Equal(2, curves2[0].SegmentIndex);
+		Assert.IsType<CubicBezierModifier>(curves2[0]);
+		Assert.Equal(3, curves2[1].SegmentIndex);
+		Assert.IsType<CubicBezierModifier>(curves2[1]);
+		Assert.Equal(3, parts2.Count);
+		Assert.Equal(2, parts2[0]);
+		Assert.Equal(0, parts2[1]);
+		Assert.Equal(3, parts2[2]);
+	}
+
 	#region Test shape factory
 
 	private static PointShape Point()
@@ -303,6 +367,16 @@ public class ShapeEngineTest
 		Collect(coords, out var xys, out var parts);
 
 		return new PolylineShape(ShapeFlags.None, xys, partVertexCounts: parts);
+	}
+
+	/// <param name="coords">Alternating x and y coordinate values, or <see cref="XY"/>
+	/// pairs, optionally interspersed with <see cref="Bezier"/> segment modifiers;
+	/// NaN or null start a new part</param>
+	private static PolylineShape Polyline(params object?[] coords)
+	{
+		Collect(coords, out var xys, out var curves, out var parts);
+
+		return new PolylineShape(ShapeFlags.None, xys, null, null, null, parts, curves);
 	}
 
 	private static PolygonShape Polygon()
@@ -363,6 +437,78 @@ public class ShapeEngineTest
 
 		parts.Add(xys.Count - tally);
 	}
+
+	private static XY Pt(double x, double y) => new(x, y);
+
+	private static Bezier Bez(double c1X, double c1Y, double c2X, double c2Y) => new(c1X, c1Y, c2X, c2Y);
+
+	private static void Collect(object?[] coords, out List<XY> xys, out List<SegmentModifier> curves, out List<int> parts)
+	{
+		if (coords is null)
+			throw new ArgumentNullException(nameof(coords));
+		// coords is an array of double coordinates (in pairs) and XY structs and segment modifiers in a meaningful sequence
+
+		double? x = null;
+		xys = new List<XY>();
+		curves = new List<SegmentModifier>();
+		parts = new List<int>(); // point (not seg) counts per part
+		var tally = 0;
+
+		foreach (var item in coords)
+		{
+			if (item is XY xy)
+			{
+				if (x.HasValue)
+					throw new ArgumentException("Coordinates must be in pairs of X and Y", nameof(coords));
+				xys.Add(xy);
+			}
+			else if (item is double or int or float)
+			{
+				var coordinate = Convert.ToDouble(item);
+				if (double.IsNaN(coordinate))
+				{   // start new part (but not between the coordinates of a point):
+					if (x.HasValue)
+						throw new ArgumentException("Coordinates must be in pairs of X and Y", nameof(coords));
+					parts.Add(xys.Count - tally);
+					tally = xys.Count;
+				}
+				else if (x is null)
+				{
+					x = coordinate;
+				}
+				else
+				{
+					xys.Add(new XY(x.Value, coordinate));
+					x = null;
+				}
+			}
+			else if (item is Bezier bezier)
+			{
+				int segmentIndex = xys.Count - 1;
+				if (segmentIndex < 0)
+					throw new ArgumentException("Cannot begin with a segment modifier");
+				if (curves.Count > 0 && segmentIndex == curves.Last().SegmentIndex)
+					throw new ArgumentException("Cannot have consecutive segment modifiers");
+				curves.Add(new CubicBezierModifier(segmentIndex, bezier.C1X, bezier.C1Y, bezier.C2X, bezier.C2Y));
+			}
+			else if (item is null)
+			{
+				if (x.HasValue) throw new ArgumentException("Coordinates must be in pairs of X and Y", nameof(coords));
+				parts.Add(xys.Count - tally);
+				tally = xys.Count;
+			}
+			else
+			{
+				throw new ArgumentException("Invalid argument sequence", nameof(coords));
+			}
+		}
+
+		if (x.HasValue)
+			throw new ArgumentException("Coordinates must be in pairs of X and Y", nameof(coords));
+		parts.Add(xys.Count - tally);
+	}
+
+	private record Bezier(double C1X, double C1Y, double C2X, double C2Y);
 
 	#endregion
 }

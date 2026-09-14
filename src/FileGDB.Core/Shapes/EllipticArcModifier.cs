@@ -35,6 +35,11 @@ public class EllipticArcModifier : SegmentModifier
 		throw new NotImplementedException();
 	}
 
+	public override XY GetCentroid(XY startPoint, XY endPoint)
+	{
+		throw new NotImplementedException();
+	}
+
 	protected override int WriteShapeBufferCore(byte[] bytes, int offset)
 	{
 		ShapeBuffer.WriteDouble(D1, bytes, offset + 0);

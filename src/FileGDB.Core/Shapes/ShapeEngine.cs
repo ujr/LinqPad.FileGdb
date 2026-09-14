@@ -288,10 +288,18 @@ public class ShapeEngine : IShapeEngine
 		{
 			var centroid = new Centroid();
 
-			foreach (var part in polyline.Parts)
+			if (polyline.NumCurves > 0)
 			{
-				// TODO consider segment modifiers: want length-weighted average of segment midpoints
-				centroid.AddLine(new ImmutableList<XY>(part.CoordsXY));
+				foreach (var segment in GetSegments(polyline))
+				{
+					XY c = segment.GetCentroid();
+					double len = segment.GetLength();
+					centroid.AddLine(c, len);
+				}
+			}
+			else
+			{
+				centroid.AddLine(new ImmutableList<XY>(polyline.CoordsXY));
 			}
 
 			return centroid.GetCentroid(out cx, out cy);
@@ -310,6 +318,62 @@ public class ShapeEngine : IShapeEngine
 		}
 
 		throw new NotSupportedException($"Unknown shape type: {shape.GetType().Name}");
+	}
+
+	private static IEnumerable<Segment> GetSegments(PolylineShape polyline)
+	{
+		foreach (var part in polyline.Parts)
+		{
+			var curves = part.Curves;
+			int curveIndex = 0;
+			var vertices = part.CoordsXY;
+			int count = vertices.Count;
+			if (count <= 0) continue; // empty part
+
+			var p1 = vertices[0];
+
+			for (int i = 1; i < count; i++)
+			{
+				var p0 = p1;
+				p1 = vertices[i];
+
+				if (curves is not null &&
+				    curveIndex < curves.Count &&
+				    curves[curveIndex].SegmentIndex == i - 1)
+				{
+					var modifier = curves[curveIndex++];
+					yield return new Segment(p0, p1, modifier);
+				}
+				else
+				{
+					yield return new Segment(p0, p1);
+				}
+			}
+		}
+	}
+
+	private class Segment
+	{
+		private XY StartXY { get; }
+		private XY EndXY { get; }
+		private SegmentModifier? Modifier { get; }
+		
+		public Segment(XY start, XY end, SegmentModifier? modifier = null)
+		{
+			StartXY = start;
+			EndXY = end;
+			Modifier = modifier;
+		}
+
+		public XY GetCentroid()
+		{
+			return Modifier?.GetCentroid(StartXY, EndXY) ?? 0.5 * (StartXY + EndXY);
+		}
+
+		public double GetLength()
+		{
+			return Modifier?.GetLength(StartXY, EndXY) ?? XY.Distance(StartXY, EndXY);
+		}
 	}
 
 	#endregion

@@ -103,6 +103,11 @@ public class CircularArcModifier : SegmentModifier
 		return Math.Abs(radius * centralAngle);
 	}
 
+	public override XY GetCentroid(XY startPoint, XY endPoint)
+	{
+		throw new NotImplementedException();
+	}
+
 	private static double GetRadius(XY start, XY center, XY end)
 	{
 		var r1 = (start - center).Magnitude;

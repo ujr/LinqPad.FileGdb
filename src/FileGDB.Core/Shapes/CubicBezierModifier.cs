@@ -32,6 +32,13 @@ public class CubicBezierModifier : SegmentModifier
 		return CubicBezier.ArcLength(startPoint, p1, p2, endPoint);
 	}
 
+	public override XY GetCentroid(XY startPoint, XY endPoint)
+	{
+		var p1 = new XY(ControlPoint1X, ControlPoint1Y);
+		var p2 = new XY(ControlPoint2X, ControlPoint2Y);
+		return CubicBezier.Centroid(startPoint, p1, p2, endPoint);
+	}
+
 	protected override int WriteShapeBufferCore(byte[] bytes, int offset)
 	{
 		ShapeBuffer.WriteDouble(ControlPoint1X, bytes, offset + 0);
